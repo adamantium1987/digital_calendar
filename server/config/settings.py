@@ -65,3 +65,152 @@ class ConfigManager:
             },
             "sync": {
                 "interval_minutes": 15,
+                "max_events_per_calendar": 1000
+            },
+            "display": {
+                "timezone": "UTC",
+                "date_format": "%Y-%m-%d",
+                "time_format": "%H:%M",
+                "default_view": "week"
+            },
+            "accounts": {
+                "google": [],
+                "apple": []
+            }
+        }
+    
+    def save_config(self):
+        """Save configuration to file"""
+        with open(self.config_file, 'w') as f:
+            json.dump(self.config, f, indent=2)
+    
+    def get(self, key: str, default=None) -> Any:
+        """Get configuration value by dot-notation key"""
+        keys = key.split('.')
+        value = self.config
+        
+        for k in keys:
+            if isinstance(value, dict) and k in value:
+                value = value[k]
+            else:
+                return default
+        
+        return value
+    
+    def set(self, key: str, value: Any):
+        """Set configuration value by dot-notation key"""
+        keys = key.split('.')
+        config = self.config
+        
+        for k in keys[:-1]:
+            if k not in config:
+                config[k] = {}
+            config = config[k]
+        
+        config[keys[-1]] = value
+        self.save_config()
+    
+    def add_google_account(self, account_id: str, display_name: str):
+        """Add a Google Calendar account"""
+        account = {
+            'id': account_id,
+            'display_name': display_name,
+            'type': 'google',
+            'enabled': True,
+            'color': '#4285f4'
+        }
+        
+        if 'accounts' not in self.config:
+            self.config['accounts'] = {'google': [], 'apple': []}
+        
+        if 'google' not in self.config['accounts']:
+            self.config['accounts']['google'] = []
+        
+        self.config['accounts']['google'].append(account)
+        self.save_config()
+
+    def add_apple_account(self, account_id: str, display_name: str, username: str, server_url: str = None):
+        """Add an Apple iCloud Calendar account"""
+        if server_url is None:
+            server_url = "https://caldav.icloud.com"
+
+        account = {
+            'id': account_id,
+            'display_name': display_name,
+            'username': username,
+            'server_url': server_url,  # Add this line
+            'type': 'apple',
+            'enabled': True,
+            'color': '#000000'
+        }
+
+        if 'accounts' not in self.config:
+            self.config['accounts'] = {'google': [], 'apple': []}
+
+        if 'apple' not in self.config['accounts']:
+            self.config['accounts']['apple'] = []
+
+        self.config['accounts']['apple'].append(account)
+        self.save_config()
+    
+    def remove_account(self, account_type: str, account_id: str):
+        """Remove an account"""
+        if 'accounts' in self.config and account_type in self.config['accounts']:
+            self.config['accounts'][account_type] = [
+                acc for acc in self.config['accounts'][account_type]
+                if acc['id'] != account_id
+            ]
+            self.save_config()
+    
+    def list_accounts(self) -> Dict[str, list]:
+        """Get all configured accounts"""
+        if 'accounts' not in self.config:
+            return {'google': [], 'apple': []}
+        
+        return {
+            'google': self.config['accounts'].get('google', []),
+            'apple': self.config['accounts'].get('apple', [])
+        }
+    
+    def store_credentials(self, account_id: str, credentials: Dict[str, Any]):
+        """Store encrypted credentials for an account"""
+        # Encrypt credentials
+        creds_json = json.dumps(credentials)
+        encrypted = self._fernet.encrypt(creds_json.encode())
+        
+        # Load existing credentials
+        if self.credentials_file.exists():
+            with open(self.credentials_file, 'rb') as f:
+                try:
+                    all_creds = json.loads(self._fernet.decrypt(f.read()).decode())
+                except:
+                    all_creds = {}
+        else:
+            all_creds = {}
+        
+        all_creds[account_id] = credentials
+        
+        # Save all credentials encrypted
+        encrypted_all = self._fernet.encrypt(json.dumps(all_creds).encode())
+        with open(self.credentials_file, 'wb') as f:
+            f.write(encrypted_all)
+        
+        os.chmod(self.credentials_file, 0o600)
+    
+    def get_credentials(self, account_id: str) -> Optional[Dict[str, Any]]:
+        """Get decrypted credentials for an account"""
+        if not self.credentials_file.exists():
+            return None
+        
+        try:
+            with open(self.credentials_file, 'rb') as f:
+                all_creds = json.loads(self._fernet.decrypt(f.read()).decode())
+            
+            return all_creds.get(account_id)
+        except Exception as e:
+            print(f"Error loading credentials: {e}")
+            return None
+
+
+# Global config instance
+config = ConfigManager()

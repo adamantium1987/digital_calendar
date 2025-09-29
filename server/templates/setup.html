@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Account Setup - Pi Calendar</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .card { background: white; padding: 20px; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .header { background: #4285f4; color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .btn { padding: 10px 20px; background: #4285f4; color: white; text-decoration: none; border-radius: 4px; margin: 5px; display: inline-block; border: none; cursor: pointer; }
+        .btn-success { background: #34a853; }
+        .btn-warning { background: #fbbc04; }
+        .btn-danger { background: #ea4335; }
+        .account-item { padding: 15px; border: 1px solid #ddd; border-radius: 4px; margin: 10px 0; }
+        .status { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin-left: 10px; }
+        .status-authenticated { background: #34a853; color: white; }
+        .status-pending { background: #fbbc04; color: white; }
+        nav { margin-bottom: 20px; }
+        nav a { margin-right: 15px; color: #4285f4; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Account Setup</h1>
+            <p>Add Google and Apple calendar accounts</p>
+        </div>
+
+        <nav>
+            <a href="/server/static/static">← Back to Dashboard</a>
+        </nav>
+
+        <div class="card">
+            <h2>Add New Account</h2>
+            <a href="/setup/google" class="btn">Add Google Account</a>
+            <a href="/setup/apple" class="btn">Add Apple Account</a>
+        </div>
+
+        {% if accounts.google or accounts.apple %}
+        <div class="card">
+            <h2>Configured Accounts</h2>
+
+            {% for account in accounts.google %}
+            <div class="account-item">
+                <h3>
+                    Google: {{ account.display_name }}
+                    {% if account.get('authenticated') %}
+                        <span class="status status-authenticated">Authenticated</span>
+                    {% else %}
+                        <span class="status status-pending">Needs Authentication</span>
+                    {% endif %}
+                </h3>
+                <p><strong>Type:</strong> Google Calendar</p>
+                <p><strong>Account ID:</strong> {{ account.id }}</p>
+
+                {% if not account.get('authenticated') %}
+                    <a href="/oauth/google/start/{{ account.id }}" class="btn btn-warning">Authenticate with Google</a>
+                {% endif %}
+
+                <form method="POST" action="/accounts/{{ account.id }}/remove" style="display: inline;">
+                    <button type="submit" class="btn btn-danger" onclick="return confirm('Remove this account?')">Remove</button>
+                </form>
+            </div>
+            {% endfor %}
+
+            {% for account in accounts.apple %}
+            <div class="account-item">
+                <h3>
+                    Apple: {{ account.display_name }}
+                    {% if account.get('authenticated') %}
+                        <span class="status status-authenticated">Authenticated</span>
+                    {% else %}
+                        <span class="status status-pending">Needs Authentication</span>
+                    {% endif %}
+                </h3>
+                <p><strong>Type:</strong> Apple iCloud</p>
+                <p><strong>Username:</strong> {{ account.username }}</p>
+                <p><strong>Account ID:</strong> {{ account.id }}</p>
+
+                {% if not account.get('authenticated') %}
+                    <a href="/setup/apple/{{ account.id }}/authenticate" class="btn btn-warning">Enter App-Specific Password</a>
+                {% endif %}
+
+                <form method="POST" action="/accounts/{{ account.id }}/remove" style="display: inline;">
+                    <button type="submit" class="btn btn-danger" onclick="return confirm('Remove this account?')">Remove</button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>
