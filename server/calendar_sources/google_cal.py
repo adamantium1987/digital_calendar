@@ -2,46 +2,48 @@
 """
 Google Calendar API integration using OAuth2
 Handles authentication, calendar listing, and event synchronization
+All methods are synchronous (no async/await)
 """
 
-import os
-import json
+import logging
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 
 from google.auth.transport.requests import Request
+from google.auth.exceptions import RefreshError, GoogleAuthError
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import Flow
+from google_auth_oauthlib.flow import Flow, InstalledAppFlow
+# from google_auth_oauthlib.exceptions import OAuthError
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 from .base import BaseCalendarSource, CalendarEvent
 from ..config.settings import config
+from ..config.constants import GOOGLE_CALENDAR_SCOPES, GOOGLE_COLOR_MAP, COLOR_GOOGLE
+
+logger = logging.getLogger(__name__)
 
 
 class GoogleCalendarSource(BaseCalendarSource):
     """Google Calendar integration via Google Calendar API"""
 
-    # OAuth2 scopes needed for calendar access
-    SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
-
     def __init__(self, account_id: str, account_config: Dict[str, Any]):
-        """Initialize Google Calendar source
-        
+        """
+        Initialize Google Calendar source
+
         Args:
             account_id: Unique identifier for this account
             account_config: Account configuration dictionary
         """
         super().__init__(account_id, account_config)
         self.service = None
-        self.credentials = None
+        self.credentials: Optional[Credentials] = None
+        self.client_id: Optional[str] = None
+        self.client_secret: Optional[str] = None
 
-        # These will be set during OAuth setup
-        self.client_id = None
-        self.client_secret = None
-
-    def set_oauth_credentials(self, client_id: str, client_secret: str):
-        """Set OAuth2 client credentials
+    def set_oauth_credentials(self, client_id: str, client_secret: str) -> None:
+        """
+        Set OAuth2 client credentials
 
         Args:
             client_id: Google OAuth2 client ID
@@ -49,35 +51,52 @@ class GoogleCalendarSource(BaseCalendarSource):
         """
         self.client_id = client_id
         self.client_secret = client_secret
+        logger.debug(f"Set OAuth credentials for {self.account_id}")
 
-    def set_token(self, token_data: Dict[str, Any]):
-        """Set OAuth token from stored credentials
+    def set_token(self, token_data: Dict[str, Any]) -> None:
+        """
+        Set OAuth token from stored credentials
 
         Args:
             token_data: Dictionary containing token, refresh_token, etc.
         """
         try:
-            self.credentials = Credentials.from_authorized_user_info(token_data, self.SCOPES)
+            self.credentials = Credentials.from_authorized_user_info(
+                token_data, GOOGLE_CALENDAR_SCOPES
+            )
 
             # Refresh if expired
             if not self.credentials.valid:
                 if self.credentials.expired and self.credentials.refresh_token:
-                    self.credentials.refresh(Request())
-                    self._save_credentials()
+                    try:
+                        self.credentials.refresh(Request())
+                        self._save_credentials()
+                        logger.info(f"Refreshed token for {self.config.get('display_name')}")
+                    except RefreshError as e:
+                        logger.error(f"Token refresh failed for {self.account_id}: {e}")
+                        self.is_authenticated = False
+                        return
 
             # Build the service
             self.service = build('calendar', 'v3', credentials=self.credentials)
             self.is_authenticated = True
+            logger.debug(f"Token set successfully for {self.account_id}")
 
-        except Exception as e:
-            print(f"Error setting token: {e}")
+        except GoogleAuthError as e:
+            logger.error(f"Google auth error setting token for {self.account_id}: {e}", exc_info=True)
             self.is_authenticated = False
 
-    async def authenticate(self) -> bool:
-        """Authenticate with Google Calendar API
+        except Exception as e:
+            logger.error(f"Unexpected error setting token for {self.account_id}: {e}", exc_info=True)
+            self.is_authenticated = False
+            raise
+
+    def authenticate(self) -> bool:
+        """
+        Authenticate with Google Calendar API
 
         Returns:
-            True if authentication successful
+            True if authentication successful, False otherwise
         """
         try:
             # Try to load existing credentials
@@ -86,48 +105,52 @@ class GoogleCalendarSource(BaseCalendarSource):
             if stored_creds and 'google_token' in stored_creds:
                 # Reconstruct credentials from stored data
                 creds_data = stored_creds['google_token']
-                self.credentials = Credentials.from_authorized_user_info(creds_data, self.SCOPES)
+                self.credentials = Credentials.from_authorized_user_info(
+                    creds_data, GOOGLE_CALENDAR_SCOPES
+                )
 
                 # Refresh if expired
                 if not self.credentials.valid:
                     if self.credentials.expired and self.credentials.refresh_token:
                         try:
                             self.credentials.refresh(Request())
-                            # Save refreshed credentials
                             self._save_credentials()
-                            print(f"  ✓ Refreshed Google token for {self.config.get('display_name')}")
-                        except Exception as refresh_error:
-                            print(f"  ✗ Token refresh failed: {refresh_error}")
-                            # Need new authentication
-                            return await self._start_oauth_flow()
+                            logger.info(f"Refreshed token for {self.config.get('display_name')}")
+                        except RefreshError as e:
+                            logger.error(f"Token refresh failed for {self.account_id}: {e}")
+                            return self._start_oauth_flow()
                     else:
-                        # Need new authentication
-                        return await self._start_oauth_flow()
+                        logger.warning(f"No refresh token available for {self.account_id}")
+                        return self._start_oauth_flow()
             else:
-                # No stored credentials, start OAuth flow
-                return await self._start_oauth_flow()
+                logger.info(f"No stored credentials for {self.account_id}, starting OAuth")
+                return self._start_oauth_flow()
 
             # Build the service
             self.service = build('calendar', 'v3', credentials=self.credentials)
             self.is_authenticated = True
+            logger.info(f"✓ Authenticated Google account: {self.config.get('display_name')}")
             return True
 
-        except Exception as e:
-            print(f"Google authentication error for {self.account_id}: {e}")
+        except GoogleAuthError as e:
+            logger.error(f"Google authentication error for {self.account_id}: {e}", exc_info=True)
+            self.is_authenticated = False
             return False
 
-    async def _start_oauth_flow(self) -> bool:
-        """Start OAuth2 flow for Google Calendar access
+        except Exception as e:
+            logger.error(f"Unexpected authentication error for {self.account_id}: {e}", exc_info=True)
+            self.is_authenticated = False
+            raise
 
-        This will print a URL for the user to visit and authorize access.
-        In a production setup, this would be handled by a web interface.
+    def _start_oauth_flow(self) -> bool:
+        """
+        Start OAuth2 flow for Google Calendar access
 
         Returns:
-            True if authentication successful
+            True if authentication successful, False otherwise
         """
         if not self.client_id or not self.client_secret:
-            print(f"Error: OAuth2 credentials not set for account {self.account_id}")
-            print("Please call set_oauth_credentials() first or configure via web interface")
+            logger.error(f"OAuth2 credentials not set for account {self.account_id}")
             return False
 
         # Create client config
@@ -145,22 +168,24 @@ class GoogleCalendarSource(BaseCalendarSource):
             # Create flow
             flow = Flow.from_client_config(
                 client_config,
-                scopes=self.SCOPES,
+                scopes=GOOGLE_CALENDAR_SCOPES,
                 redirect_uri="http://localhost:8080/callback"
             )
 
             # Get authorization URL
             auth_url, _ = flow.authorization_url(prompt='consent')
 
-            print(f"\n{'='*70}")
+            logger.info(f"Google Calendar Authorization Required for {self.config.get('display_name')}")
+            logger.info(f"Visit: {auth_url}")
+            print(f"\n{'=' * 70}")
             print(f"Google Calendar Authorization Required")
             print(f"Account: {self.config.get('display_name', self.account_id)}")
-            print(f"{'='*70}")
+            print(f"{'=' * 70}")
             print(f"\nPlease visit this URL to authorize access:")
             print(f"\n{auth_url}\n")
             print("After authorization, you'll be redirected to a localhost URL.")
             print("Copy the ENTIRE URL from your browser and paste it here:")
-            print(f"{'='*70}")
+            print(f"{'=' * 70}")
 
             # Get authorization response
             authorization_response = input("\nEnter the full redirect URL: ").strip()
@@ -176,17 +201,30 @@ class GoogleCalendarSource(BaseCalendarSource):
             self.service = build('calendar', 'v3', credentials=self.credentials)
             self.is_authenticated = True
 
+            logger.info(f"✓ Successfully authenticated Google account: {self.config.get('display_name')}")
             print(f"\n✓ Successfully authenticated Google account: {self.config.get('display_name')}")
-            print(f"{'='*70}\n")
+            print(f"{'=' * 70}\n")
             return True
 
-        except Exception as e:
-            print(f"OAuth2 flow error: {e}")
+        except OAuthError as e:
+            logger.error(f"OAuth flow error for {self.account_id}: {e}", exc_info=True)
             return False
 
-    def _save_credentials(self):
+        except ValueError as e:
+            logger.error(f"Invalid authorization response for {self.account_id}: {e}")
+            return False
+
+        except Exception as e:
+            logger.error(f"Unexpected OAuth error for {self.account_id}: {e}", exc_info=True)
+            raise
+
+    def _save_credentials(self) -> None:
         """Save credentials to encrypted storage"""
-        if self.credentials:
+        if not self.credentials:
+            logger.warning(f"No credentials to save for {self.account_id}")
+            return
+
+        try:
             creds_data = {
                 'token': self.credentials.token,
                 'refresh_token': self.credentials.refresh_token,
@@ -196,16 +234,27 @@ class GoogleCalendarSource(BaseCalendarSource):
                 'scopes': self.credentials.scopes
             }
 
-            config.store_credentials(self.account_id, {'google_token': creds_data})
+            # Get existing credentials to preserve OAuth client info
+            stored = config.get_credentials(self.account_id) or {}
+            stored['google_token'] = creds_data
 
-    async def get_calendars(self) -> List[Dict[str, Any]]:
-        """Get list of Google calendars for this account
+            config.store_credentials(self.account_id, stored)
+            logger.debug(f"Saved credentials for {self.account_id}")
+
+        except Exception as e:
+            logger.error(f"Error saving credentials for {self.account_id}: {e}", exc_info=True)
+            raise
+
+    def get_calendars(self) -> List[Dict[str, Any]]:
+        """
+        Get list of Google calendars for this account
 
         Returns:
             List of calendar info dicts with id, name, description, color, etc.
         """
         if not self.is_authenticated:
-            if not await self.authenticate():
+            if not self.authenticate():
+                logger.warning(f"Cannot get calendars, authentication failed for {self.account_id}")
                 return []
 
         try:
@@ -220,29 +269,43 @@ class GoogleCalendarSource(BaseCalendarSource):
                     'id': cal['id'],
                     'name': cal['summary'],
                     'description': cal.get('description', ''),
-                    'color': cal.get('backgroundColor', '#4285f4'),
+                    'color': cal.get('backgroundColor', COLOR_GOOGLE),
                     'primary': cal.get('primary', False),
                     'access_role': cal.get('accessRole', 'reader'),
                     'selected': cal.get('selected', True),
                     'timezone': cal.get('timeZone', 'UTC')
                 })
 
+            logger.info(f"Retrieved {len(result)} calendars for {self.config.get('display_name')}")
             return result
 
         except HttpError as e:
-            print(f"Google Calendar API error getting calendars: {e}")
             if e.resp.status == 401:
                 # Token expired or invalid, clear authentication
                 self.is_authenticated = False
-                print(f"  Authentication expired for {self.config.get('display_name')}, re-auth required")
-            return []
-        except Exception as e:
-            print(f"Error getting Google calendars: {e}")
+                logger.warning(f"Authentication expired for {self.config.get('display_name')}, re-auth required")
+            elif e.resp.status == 403:
+                logger.error(f"Permission denied getting calendars for {self.account_id}: {e}")
+            else:
+                logger.error(f"HTTP error getting calendars for {self.account_id}: {e}", exc_info=True)
             return []
 
-    async def get_events(self, calendar_id: str, start_date: datetime,
-                         end_date: datetime) -> List[CalendarEvent]:
-        """Get events from a Google calendar
+        except ConnectionError as e:
+            logger.error(f"Network error getting calendars for {self.account_id}: {e}")
+            return []
+
+        except Exception as e:
+            logger.error(f"Unexpected error getting calendars for {self.account_id}: {e}", exc_info=True)
+            raise
+
+    def get_events(
+            self,
+            calendar_id: str,
+            start_date: datetime,
+            end_date: datetime
+    ) -> List[CalendarEvent]:
+        """
+        Get events from a Google calendar
 
         Args:
             calendar_id: Google calendar ID
@@ -253,20 +316,22 @@ class GoogleCalendarSource(BaseCalendarSource):
             List of CalendarEvent objects
         """
         if not self.is_authenticated:
-            if not await self.authenticate():
+            if not self.authenticate():
+                logger.warning(f"Cannot get events, authentication failed for {self.account_id}")
                 return []
 
         try:
             # Format times for Google API (RFC3339 format)
-            time_min = start_date.isoformat() + 'Z' if start_date.tzinfo is None else start_date.isoformat()
-            time_max = end_date.isoformat() + 'Z' if end_date.tzinfo is None else end_date.isoformat()
+            time_min = start_date.isoformat() if start_date.tzinfo else start_date.isoformat() + 'Z'
+            time_max = end_date.isoformat() if end_date.tzinfo else end_date.isoformat() + 'Z'
 
             # Get events from Google API
+            from ..config.constants import DEFAULT_MAX_EVENTS_PER_CALENDAR
             events_result = self.service.events().list(
                 calendarId=calendar_id,
                 timeMin=time_min,
                 timeMax=time_max,
-                maxResults=config.get('sync.max_events_per_calendar', 1000),
+                maxResults=config.get('sync.max_events_per_calendar', DEFAULT_MAX_EVENTS_PER_CALENDAR),
                 singleEvents=True,  # Expand recurring events
                 orderBy='startTime'
             ).execute()
@@ -277,30 +342,40 @@ class GoogleCalendarSource(BaseCalendarSource):
             result = []
             for event in events:
                 try:
-                    # Parse event data
                     cal_event = self._parse_google_event(event, calendar_id)
                     if cal_event:
                         result.append(cal_event)
-
+                except (ValueError, KeyError) as e:
+                    logger.warning(f"Error parsing event {event.get('id', 'unknown')}: {e}")
+                    continue
                 except Exception as e:
-                    print(f"  ⚠ Error parsing event {event.get('id', 'unknown')}: {e}")
+                    logger.error(f"Unexpected error parsing event {event.get('id', 'unknown')}: {e}", exc_info=True)
                     continue
 
+            logger.info(f"Retrieved {len(result)} events from calendar {calendar_id}")
             return result
 
         except HttpError as e:
-            print(f"Google Calendar API error getting events: {e}")
             if e.resp.status == 401:
-                # Token expired or invalid
                 self.is_authenticated = False
-                print(f"  Authentication expired for {self.config.get('display_name')}, re-auth required")
-            return []
-        except Exception as e:
-            print(f"Error getting Google events: {e}")
+                logger.warning(f"Authentication expired for {self.config.get('display_name')}, re-auth required")
+            elif e.resp.status == 404:
+                logger.warning(f"Calendar not found: {calendar_id}")
+            else:
+                logger.error(f"HTTP error getting events for {self.account_id}: {e}", exc_info=True)
             return []
 
+        except ConnectionError as e:
+            logger.error(f"Network error getting events for {self.account_id}: {e}")
+            return []
+
+        except Exception as e:
+            logger.error(f"Unexpected error getting events for {self.account_id}: {e}", exc_info=True)
+            raise
+
     def _parse_google_event(self, event: Dict[str, Any], calendar_id: str) -> Optional[CalendarEvent]:
-        """Parse a Google Calendar event into CalendarEvent format
+        """
+        Parse a Google Calendar event into CalendarEvent format
 
         Args:
             event: Raw event data from Google API
@@ -320,8 +395,8 @@ class GoogleCalendarSource(BaseCalendarSource):
                 end_dt = datetime.fromisoformat(end.replace('Z', '+00:00'))
                 all_day = False
             else:  # All-day event
-                start_dt = datetime.fromisoformat(f"{start}T00:00:00")
-                end_dt = datetime.fromisoformat(f"{end}T00:00:00")
+                start_dt = datetime.fromisoformat(f"{start}T00:00:00+00:00")
+                end_dt = datetime.fromisoformat(f"{end}T00:00:00+00:00")
                 all_day = True
 
             # Extract attendees
@@ -333,15 +408,9 @@ class GoogleCalendarSource(BaseCalendarSource):
                 ]
 
             # Get event color
-            event_color = self.config.get('color', '#4285f4')
+            event_color = self.config.get('color', COLOR_GOOGLE)
             if 'colorId' in event:
-                # Google uses numeric color IDs, map to hex colors
-                color_map = {
-                    '1': '#a4bdfc', '2': '#7ae7bf', '3': '#dbadff', '4': '#ff887c',
-                    '5': '#fbd75b', '6': '#ffb878', '7': '#46d6db', '8': '#e1e1e1',
-                    '9': '#5484ed', '10': '#51b749', '11': '#dc2127'
-                }
-                event_color = color_map.get(event['colorId'], event_color)
+                event_color = GOOGLE_COLOR_MAP.get(event['colorId'], event_color)
 
             # Create CalendarEvent object
             cal_event = CalendarEvent(
@@ -360,72 +429,95 @@ class GoogleCalendarSource(BaseCalendarSource):
 
             return cal_event
 
+        except KeyError as e:
+            logger.warning(f"Missing required event field: {e}")
+            return None
+
+        except ValueError as e:
+            logger.warning(f"Invalid event data format: {e}")
+            return None
+
         except Exception as e:
-            print(f"  ⚠ Error parsing event: {e}")
+            logger.error(f"Unexpected error parsing Google event: {e}", exc_info=True)
             return None
 
     def get_source_type(self) -> str:
-        """Get source type identifier
-
-        Returns:
-            String identifier for this source type
-        """
+        """Get source type identifier"""
         return "google"
+
+    def close(self) -> None:
+        """Clean up resources"""
+        if self.service:
+            self.service.close()
+            self.service = None
+            logger.debug(f"Closed Google Calendar service for {self.account_id}")
 
 
 class GoogleCalendarSetup:
     """Helper class for Google Calendar setup and OAuth2 configuration"""
 
     @staticmethod
-    def print_setup_instructions():
+    def print_setup_instructions() -> None:
         """Print detailed instructions for setting up Google Calendar API"""
-        print("\n" + "=" * 70)
-        print("GOOGLE CALENDAR API SETUP INSTRUCTIONS")
-        print("=" * 70)
-        print("\nTo use Google Calendar with Pi Calendar System, follow these steps:\n")
-        print("1. CREATE GOOGLE CLOUD PROJECT")
-        print("   • Go to: https://console.developers.google.com/")
-        print("   • Click 'Select a project' → 'New Project'")
-        print("   • Enter project name (e.g., 'Pi Calendar')")
-        print("   • Click 'Create'\n")
-        print("2. ENABLE GOOGLE CALENDAR API")
-        print("   • In the project, go to 'APIs & Services' → 'Library'")
-        print("   • Search for 'Google Calendar API'")
-        print("   • Click on it and press 'Enable'\n")
-        print("3. CREATE OAUTH 2.0 CREDENTIALS")
-        print("   • Go to 'APIs & Services' → 'Credentials'")
-        print("   • Click 'Create Credentials' → 'OAuth 2.0 Client ID'")
-        print("   • If prompted, configure OAuth consent screen:")
-        print("     - User Type: External")
-        print("     - App name: Pi Calendar")
-        print("     - User support email: your@email.com")
-        print("     - Developer contact: your@email.com")
-        print("     - Click 'Save and Continue' through remaining steps")
-        print("   • Application type: 'Web application'")
-        print("   • Name: 'Pi Calendar Client'")
-        print("   • Authorized redirect URIs:")
-        print("     - Add: http://localhost:8080/callback")
-        print("   • Click 'Create'\n")
-        print("4. DOWNLOAD CREDENTIALS")
-        print("   • You'll see a popup with Client ID and Client Secret")
-        print("   • Copy these values (you'll need them for setup)")
-        print("   • Or download the JSON file for reference\n")
-        print("5. ADD ACCOUNT IN PI CALENDAR")
-        print("   • Open Pi Calendar web interface")
-        print("   • Go to 'Account Setup' → 'Add Google Account'")
-        print("   • Enter display name, Client ID, and Client Secret")
-        print("   • Follow OAuth authorization flow\n")
-        print("=" * 70)
-        print("IMPORTANT NOTES:")
-        print("• Keep Client Secret secure (it's like a password)")
-        print("• You can create multiple OAuth clients for different devices")
-        print("• If you see 'unverified app' warning during OAuth, click 'Advanced'")
-        print("  and then 'Go to Pi Calendar (unsafe)' - this is safe for personal use")
-        print("=" * 70 + "\n")
+        instructions = """
+{'='*70}
+GOOGLE CALENDAR API SETUP INSTRUCTIONS
+{'='*70}
+
+To use Google Calendar with Pi Calendar System, follow these steps:
+
+1. CREATE GOOGLE CLOUD PROJECT
+   • Go to: https://console.developers.google.com/
+   • Click 'Select a project' → 'New Project'
+   • Enter project name (e.g., 'Pi Calendar')
+   • Click 'Create'
+
+2. ENABLE GOOGLE CALENDAR API
+   • In the project, go to 'APIs & Services' → 'Library'
+   • Search for 'Google Calendar API'
+   • Click on it and press 'Enable'
+
+3. CREATE OAUTH 2.0 CREDENTIALS
+   • Go to 'APIs & Services' → 'Credentials'
+   • Click 'Create Credentials' → 'OAuth 2.0 Client ID'
+   • If prompted, configure OAuth consent screen:
+     - User Type: External
+     - App name: Pi Calendar
+     - User support email: your@email.com
+     - Developer contact: your@email.com
+     - Click 'Save and Continue' through remaining steps
+   • Application type: 'Web application'
+   • Name: 'Pi Calendar Client'
+   • Authorized redirect URIs:
+     - Add: http://localhost:8080/callback
+   • Click 'Create'
+
+4. DOWNLOAD CREDENTIALS
+   • You'll see a popup with Client ID and Client Secret
+   • Copy these values (you'll need them for setup)
+   • Or download the JSON file for reference
+
+5. ADD ACCOUNT IN PI CALENDAR
+   • Open Pi Calendar web interface
+   • Go to 'Account Setup' → 'Add Google Account'
+   • Enter display name, Client ID, and Client Secret
+   • Follow OAuth authorization flow
+
+{'='*70}
+IMPORTANT NOTES:
+• Keep Client Secret secure (it's like a password)
+• You can create multiple OAuth clients for different devices
+• If you see 'unverified app' warning during OAuth, click 'Advanced'
+  and then 'Go to Pi Calendar (unsafe)' - this is safe for personal use
+{'='*70}
+"""
+        logger.info("Printing Google Calendar setup instructions")
+        print(instructions)
 
     @staticmethod
     def setup_google_account(display_name: str, client_id: str, client_secret: str) -> str:
-        """Set up a new Google Calendar account
+        """
+        Set up a new Google Calendar account
 
         Args:
             display_name: Human-readable name for this account
@@ -443,17 +535,17 @@ class GoogleCalendarSetup:
         # Validate inputs
         if not display_name or not display_name.strip():
             raise ValueError("Display name cannot be empty")
-        
+
         if not client_id or not client_id.strip():
             raise ValueError("Client ID cannot be empty")
-        
+
         if not client_secret or not client_secret.strip():
             raise ValueError("Client Secret cannot be empty")
-        
+
         # Validate client ID format (basic check)
         if not client_id.endswith('.apps.googleusercontent.com'):
-            print("⚠ Warning: Client ID doesn't match expected format")
-        
+            logger.warning("Client ID doesn't match expected format")
+
         # Generate unique account ID
         account_id = f"google_{uuid.uuid4().hex[:8]}"
 
@@ -466,6 +558,7 @@ class GoogleCalendarSetup:
             'client_secret': client_secret
         })
 
+        logger.info(f"✓ Google account '{display_name}' configured ({account_id})")
         print(f"\n✓ Google account '{display_name}' configured")
         print(f"  Account ID: {account_id}")
         print(f"  Status: Ready for authentication")
@@ -475,7 +568,8 @@ class GoogleCalendarSetup:
 
     @staticmethod
     def validate_credentials(client_id: str, client_secret: str) -> bool:
-        """Validate OAuth2 credentials format
+        """
+        Validate OAuth2 credentials format
 
         Args:
             client_id: Google OAuth2 client ID
@@ -486,14 +580,16 @@ class GoogleCalendarSetup:
         """
         # Check client ID format
         if not client_id.endswith('.apps.googleusercontent.com'):
+            logger.warning("Client ID format may be incorrect")
             return False
-        
+
         # Check client secret format (starts with GOCSPX-)
         if not client_secret.startswith('GOCSPX-'):
-            print("⚠ Warning: Client Secret format may be incorrect")
-        
+            logger.warning("Client Secret format may be incorrect")
+
         # Check lengths
         if len(client_id) < 50 or len(client_secret) < 20:
+            logger.warning("Credentials appear too short")
             return False
-        
+
         return True

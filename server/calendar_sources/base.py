@@ -2,18 +2,23 @@
 """
 Base calendar source interface
 Defines abstract base class and event model for all calendar integrations
+All methods are synchronous (no async/await) since underlying APIs are blocking
 """
 
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
 class CalendarEvent:
-    """Standard calendar event representation
-    
+    """
+    Standard calendar event representation
+
     This dataclass provides a unified event model across
     different calendar providers (Google, Apple, etc.)
     """
@@ -34,19 +39,23 @@ class CalendarEvent:
         if self.attendees is None:
             self.attendees = []
         if self.color is None:
-            self.color = '#4285f4'  # Default blue color
+            from ..config.constants import COLOR_DEFAULT
+            self.color = COLOR_DEFAULT
 
 
 class BaseCalendarSource(ABC):
-    """Abstract base class for all calendar sources
-    
+    """
+    Abstract base class for all calendar sources
+
     All calendar integrations (Google, Apple, etc.) must inherit
     from this class and implement the required methods.
+    All methods are synchronous for simplicity.
     """
 
     def __init__(self, account_id: str, config: Dict[str, Any]):
-        """Initialize calendar source
-        
+        """
+        Initialize calendar source
+
         Args:
             account_id: Unique identifier for this account
             config: Configuration dictionary for this account
@@ -54,20 +63,23 @@ class BaseCalendarSource(ABC):
         self.account_id = account_id
         self.config = config
         self.is_authenticated = False
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     @abstractmethod
-    async def authenticate(self) -> bool:
-        """Authenticate with the calendar service
-        
+    def authenticate(self) -> bool:
+        """
+        Authenticate with the calendar service
+
         Returns:
             True if authentication successful, False otherwise
         """
         pass
 
     @abstractmethod
-    async def get_calendars(self) -> List[Dict[str, Any]]:
-        """Get list of available calendars from this source
-        
+    def get_calendars(self) -> List[Dict[str, Any]]:
+        """
+        Get list of available calendars from this source
+
         Returns:
             List of calendar info dictionaries with keys:
                 - id: Calendar identifier
@@ -75,19 +87,21 @@ class BaseCalendarSource(ABC):
                 - description: Calendar description
                 - color: Calendar color code
                 - primary: Whether this is the primary calendar
+                - access_role: User's access level
         """
         pass
 
     @abstractmethod
-    async def get_events(self, calendar_id: str, start_date: datetime,
-                         end_date: datetime) -> List[CalendarEvent]:
-        """Get events from a specific calendar
-        
+    def get_events(self, calendar_id: str, start_date: datetime,
+                   end_date: datetime) -> List[CalendarEvent]:
+        """
+        Get events from a specific calendar
+
         Args:
             calendar_id: Calendar identifier
             start_date: Start of date range
             end_date: End of date range
-            
+
         Returns:
             List of CalendarEvent objects
         """
@@ -95,9 +109,26 @@ class BaseCalendarSource(ABC):
 
     @abstractmethod
     def get_source_type(self) -> str:
-        """Get the source type identifier
-        
+        """
+        Get the source type identifier
+
         Returns:
             Source type string (e.g., 'google', 'apple')
         """
         pass
+
+    def close(self):
+        """
+        Clean up resources (connections, sessions, etc.)
+        Override in subclasses if needed
+        """
+        pass
+
+    def __enter__(self):
+        """Context manager entry"""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - ensure cleanup"""
+        self.close()
+        return False

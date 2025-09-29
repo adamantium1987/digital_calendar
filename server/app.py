@@ -4,25 +4,50 @@ Main Flask application for Pi Calendar Server
 Provides REST API for Pi Zero clients and web interface for configuration
 """
 
-import logging
 import os
+from pathlib import Path
 
 from flask import Flask, jsonify, request, render_template, redirect, url_for, session
-
-from .api.routes import api_bp
-from .config.settings import config
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 # Allow OAuth over HTTP for local development
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
-logging.getLogger('root').setLevel(logging.WARNING)
-logging.getLogger('caldav').setLevel(logging.WARNING)
+# Import configuration and logging FIRST
+from .config.settings import config
+from .config.logger import setup_logging, get_logger
+from .config.constants import (
+    DEFAULT_SERVER_HOST,
+    DEFAULT_SERVER_PORT,
+    DEFAULT_SERVER_DEBUG,
+    API_RATE_LIMIT_PER_HOUR,
+    API_VERSION
+)
 
-logging.info(f"Config directory: {config.config_dir}")
-logging.info(f"Config file: {config.config_file}")
+# Setup logging before anything else
+log_dir = Path(config.config_dir) / "logs"
+setup_logging(
+    log_dir=log_dir,
+    log_level=config.get('logging.level', 'INFO'),
+    console_output=True
+)
+logger = get_logger(__name__)
+
+logger.info("=" * 70)
+logger.info("Pi Calendar Server Initializing")
+logger.info("=" * 70)
+logger.info(f"Config directory: {config.config_dir}")
+logger.info(f"Config file: {config.config_file}")
+logger.info(f"Log directory: {log_dir}")
+
+from .api.routes import api_bp
+
 
 def create_app() -> Flask:
     """Create and configure Flask application"""
+    logger.info("Creating Flask application...")
+
     app = Flask(__name__,
                 static_folder='static',
                 static_url_path='/static',
@@ -35,12 +60,29 @@ def create_app() -> Flask:
         import secrets
         secret_key = secrets.token_hex(32)
         config.set('server.secret_key', secret_key)
+        logger.info("Generated new secret key for Flask sessions")
 
     app.secret_key = secret_key
 
-    # Register API blueprint
-    app.register_blueprint(api_bp, url_prefix='/api')
+    # Initialize rate limiter
+    limiter = Limiter(
+        app=app,
+        key_func=get_remote_address,
+        default_limits=[f"{API_RATE_LIMIT_PER_HOUR} per hour"],
+        storage_uri="memory://",
+        strategy="fixed-window"
+    )
+    logger.info(f"Rate limiter initialized: {API_RATE_LIMIT_PER_HOUR} requests/hour")
 
+    # Register API blueprint - FIXED: Use /api instead of /api/v1
+    # This matches what the frontend expects
+    app.register_blueprint(api_bp, url_prefix='/api')
+    logger.info("API blueprint registered at /api")
+
+    # Store limiter in app config for use in routes
+    app.limiter = limiter
+
+    logger.info("✓ Flask application created successfully")
     return app
 
 
@@ -50,9 +92,11 @@ app = create_app()
 # Import sync engine after app creation to avoid circular imports
 try:
     from .sync.sync_engine import sync_engine
-except ImportError:
+
+    logger.info("Sync engine imported successfully")
+except ImportError as e:
     sync_engine = None
-    print("Warning: Sync engine not available")
+    logger.error(f"Failed to import sync engine: {e}")
 
 
 # ===============================
@@ -91,9 +135,9 @@ def index():
             try:
                 sync_status = sync_engine.get_sync_status()
                 accounts = config.list_accounts()
-                # cache_stats = sync_engine.cache_manager.get_cache_stats()
+                cache_stats = sync_engine.cache_manager.get_cache_stats()
             except Exception as e:
-                print(f"Error getting dashboard data: {e}")
+                logger.error(f"Error getting dashboard data: {e}", exc_info=True)
 
         return render_template('index.html',
                                sync_status=sync_status,
@@ -102,7 +146,7 @@ def index():
                                request=request)
 
     except Exception as e:
-        print(f"Error rendering index page: {e}")
+        logger.error(f"Error rendering index page: {e}", exc_info=True)
         return render_template('error.html', error=str(e))
 
 
@@ -123,7 +167,7 @@ def setup():
 
         return render_template('setup.html', accounts=accounts)
     except Exception as e:
-        print(f"Error loading setup page: {e}")
+        logger.error(f"Error loading setup page: {e}", exc_info=True)
         return render_template('error.html', error=str(e))
 
 
@@ -137,6 +181,7 @@ def setup_google():
             client_secret = request.form.get('client_secret', '').strip()
 
             if not all([display_name, client_id, client_secret]):
+                logger.warning("Google account setup failed: missing required fields")
                 return render_template('google_setup.html',
                                        error="All fields are required")
 
@@ -147,6 +192,7 @@ def setup_google():
             account_id = GoogleCalendarSetup.setup_google_account(
                 display_name, client_id, client_secret
             )
+            logger.info(f"✓ Google account created: {display_name} (ID: {account_id})")
 
             # Add to sync engine if available
             if sync_engine:
@@ -155,12 +201,13 @@ def setup_google():
                     'display_name': display_name
                 }
                 sync_engine.add_account('google', account_config)
+                logger.info(f"Added Google account to sync engine: {display_name}")
 
             # Redirect to OAuth flow to authenticate
             return redirect(url_for('start_google_oauth', account_id=account_id))
 
         except Exception as e:
-            print(f"Error setting up Google account: {e}")
+            logger.error(f"Error setting up Google account: {e}", exc_info=True)
             return render_template('google_setup.html',
                                    error=f"Setup failed: {str(e)}")
 
@@ -175,9 +222,11 @@ def setup_google():
 
 
 @app.route('/oauth/google/start/<account_id>')
-def start_google_oauth(account_id):
+def start_google_oauth(account_id: str):
     """Initiate Google OAuth flow for an account"""
     try:
+        logger.info(f"Starting Google OAuth flow for account: {account_id}")
+
         # Get account info
         accounts = config.list_accounts()
         account = None
@@ -187,11 +236,13 @@ def start_google_oauth(account_id):
                 break
 
         if not account:
+            logger.error(f"Account not found: {account_id}")
             return render_template('error.html', error="Account not found"), 404
 
         # Get stored credentials (client_id, client_secret)
         stored_creds = config.get_credentials(account_id)
         if not stored_creds or 'client_id' not in stored_creds:
+            logger.error(f"OAuth credentials not found for account: {account_id}")
             return render_template('error.html',
                                    error="OAuth credentials not found. Please add account again."), 400
 
@@ -227,11 +278,13 @@ def start_google_oauth(account_id):
         # Store state in session for verification
         session['oauth_state'] = state
 
+        logger.info(f"OAuth flow initiated for {account.get('display_name')}")
+
         # Redirect user to Google
         return redirect(auth_url)
 
     except Exception as e:
-        print(f"Error starting OAuth flow: {e}")
+        logger.error(f"Error starting OAuth flow: {e}", exc_info=True)
         return render_template('error.html',
                                error=f"Failed to start OAuth: {str(e)}"), 500
 
@@ -240,21 +293,26 @@ def start_google_oauth(account_id):
 def google_oauth_callback():
     """Handle Google OAuth callback"""
     try:
+        logger.info("Processing Google OAuth callback")
+
         # Verify state to prevent CSRF
         state = session.get('oauth_state')
         if not state:
+            logger.error("Invalid OAuth state - possible CSRF attack")
             return render_template('error.html',
                                    error="Invalid OAuth state. Please try again."), 400
 
         # Get account_id from session
         account_id = session.get('oauth_account_id')
         if not account_id:
+            logger.error("OAuth session expired")
             return render_template('error.html',
                                    error="OAuth session expired. Please try again."), 400
 
         # Get stored credentials
         stored_creds = config.get_credentials(account_id)
         if not stored_creds:
+            logger.error(f"Account credentials not found: {account_id}")
             return render_template('error.html',
                                    error="Account credentials not found."), 400
 
@@ -297,6 +355,7 @@ def google_oauth_callback():
         }
 
         config.store_credentials(account_id, creds_data)
+        logger.info(f"✓ OAuth credentials saved for account: {account_id}")
 
         # Reload the source in sync engine if available
         if sync_engine:
@@ -320,7 +379,7 @@ def google_oauth_callback():
                 )
                 source.set_token(creds_data['google_token'])
                 sync_engine.sources[account_id] = source
-                print(f"Reloaded source for {account_info.get('display_name', account_id)}")
+                logger.info(f"Reloaded source for {account_info.get('display_name', account_id)}")
 
         # Clear session data
         session.pop('oauth_account_id', None)
@@ -334,15 +393,13 @@ def google_oauth_callback():
                 account_name = acc['display_name']
                 break
 
-        print(f"Successfully authenticated Google account: {account_name or account_id}")
+        logger.info(f"✓ Successfully authenticated Google account: {account_name or account_id}")
 
         # Redirect back to setup page with success message
         return redirect(url_for('setup'))
 
     except Exception as e:
-        print(f"Error in OAuth callback: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in OAuth callback: {e}", exc_info=True)
         return render_template('error.html',
                                error=f"OAuth authentication failed: {str(e)}"), 500
 
@@ -356,6 +413,7 @@ def setup_apple():
             username = request.form.get('username', '').strip()
 
             if not all([display_name, username]):
+                logger.warning("Apple account setup failed: missing required fields")
                 return render_template('apple_setup.html',
                                        error="All fields are required")
 
@@ -363,12 +421,14 @@ def setup_apple():
             from .calendar_sources.apple_cal import AppleCalendarSetup
 
             if not AppleCalendarSetup.validate_username(username):
+                logger.warning(f"Invalid email format: {username}")
                 return render_template('apple_setup.html',
                                        error="Invalid email format")
 
             account_id = AppleCalendarSetup.setup_apple_account(
                 display_name, username
             )
+            logger.info(f"✓ Apple account created: {display_name} (ID: {account_id})")
 
             # Add to sync engine if available
             if sync_engine:
@@ -378,12 +438,13 @@ def setup_apple():
                     'username': username
                 }
                 sync_engine.add_account('apple', account_config)
+                logger.info(f"Added Apple account to sync engine: {display_name}")
 
             # Redirect to authentication page
             return redirect(url_for('authenticate_apple', account_id=account_id))
 
         except Exception as e:
-            print(f"Error setting up Apple account: {e}")
+            logger.error(f"Error setting up Apple account: {e}", exc_info=True)
             return render_template('apple_setup.html',
                                    error=f"Setup failed: {str(e)}")
 
@@ -398,7 +459,7 @@ def setup_apple():
 
 
 @app.route('/setup/apple/<account_id>/authenticate', methods=['GET', 'POST'])
-def authenticate_apple(account_id):
+def authenticate_apple(account_id: str):
     """Apple app-specific password entry"""
     try:
         # Get account info
@@ -410,6 +471,7 @@ def authenticate_apple(account_id):
                 break
 
         if not account:
+            logger.error(f"Account not found: {account_id}")
             return render_template('error.html', error="Account not found"), 404
 
         if request.method == 'POST':
@@ -419,13 +481,16 @@ def authenticate_apple(account_id):
             app_password = app_password.replace(' ', '').replace('-', '')
 
             # Validate format (16 chars)
-            if len(app_password) != 16 or not app_password.isalnum():
+            from .config.constants import APPLE_APP_PASSWORD_LENGTH
+            if len(app_password) != APPLE_APP_PASSWORD_LENGTH or not app_password.isalnum():
+                logger.warning(f"Invalid app password format for account: {account_id}")
                 return render_template('apple_auth.html',
                                        account=account,
                                        error="Invalid format. Should be 16 characters (letters/numbers)")
 
             # Store the password
             config.store_credentials(account_id, {'app_password': app_password})
+            logger.info(f"App password stored for account: {account_id}")
 
             # Reload the source in sync engine AND authenticate it
             if sync_engine:
@@ -435,20 +500,20 @@ def authenticate_apple(account_id):
                 from .calendar_sources.apple_cal import AppleCalendarSource
                 source = AppleCalendarSource(account_id, account)
 
-                # Actually authenticate the source NOW
-                import asyncio
+                # Authenticate the source NOW
                 try:
-                    authenticated = asyncio.run(source.authenticate())
+                    authenticated = source.authenticate()
                     if authenticated:
                         sync_engine.sources[account_id] = source
-                        print(
+                        logger.info(
                             f"✓ Successfully authenticated Apple source for {account.get('display_name', account_id)}")
                     else:
+                        logger.error(f"Authentication failed for Apple account: {account_id}")
                         return render_template('apple_auth.html',
                                                account=account,
                                                error="Authentication failed. Please check your password and try again.")
                 except Exception as e:
-                    print(f"Authentication error: {e}")
+                    logger.error(f"Authentication error: {e}", exc_info=True)
                     return render_template('apple_auth.html',
                                            account=account,
                                            error=f"Authentication failed: {str(e)}")
@@ -459,7 +524,7 @@ def authenticate_apple(account_id):
         return render_template('apple_auth.html', account=account, error=None)
 
     except Exception as e:
-        print(f"Error authenticating Apple account: {e}")
+        logger.error(f"Error authenticating Apple account: {e}", exc_info=True)
         return render_template('error.html', error=str(e)), 500
 
 
@@ -468,10 +533,13 @@ def sync_now():
     """Trigger immediate sync"""
     try:
         if sync_engine and sync_engine.force_sync():
+            logger.info("Manual sync triggered")
             return jsonify({'status': 'success', 'message': 'Sync started'})
         else:
+            logger.warning("Manual sync failed - already in progress or engine unavailable")
             return jsonify({'status': 'error', 'message': 'Sync already in progress or sync engine unavailable'}), 409
     except Exception as e:
+        logger.error(f"Error triggering sync: {e}", exc_info=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
@@ -482,13 +550,15 @@ def status():
         if sync_engine:
             return jsonify(sync_engine.get_sync_status())
         else:
+            logger.warning("Status requested but sync engine unavailable")
             return jsonify({'error': 'Sync engine not available'}), 503
     except Exception as e:
+        logger.error(f"Error getting status: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 
 @app.route('/accounts/<account_id>/remove', methods=['POST'])
-def remove_account(account_id):
+def remove_account(account_id: str):
     """Remove an account with proper error handling"""
     try:
         # Get account info for display
@@ -506,20 +576,23 @@ def remove_account(account_id):
                 break
 
         if not account_info:
+            logger.error(f"Account not found for removal: {account_id}")
             return render_template('error.html',
                                    error="Account not found"), 404
 
         # Remove from config
         config.remove_account(account_type, account_id)
+        logger.info(f"✓ Removed account: {account_info.get('display_name')} (ID: {account_id})")
 
         # Remove from sync engine if available
         if sync_engine:
             sync_engine.remove_account(account_id)
+            logger.info(f"Removed account from sync engine: {account_id}")
 
         return redirect(url_for('setup'))
 
     except Exception as e:
-        print(f"Error removing account: {e}")
+        logger.error(f"Error removing account: {e}", exc_info=True)
         return render_template('error.html',
                                error=f"Failed to remove account: {str(e)}"), 500
 
@@ -550,8 +623,14 @@ def display_view():
 def not_found(error):
     """Handle 404 errors"""
     if request.path.startswith('/api/'):
-        return jsonify({'error': 'Not found'}), 404
+        logger.warning(f"404 - API endpoint not found: {request.path}")
+        return jsonify({
+            'error': 'Not found',
+            'message': 'API endpoint not found',
+            'path': request.path
+        }), 404
     else:
+        logger.warning(f"404 - Page not found: {request.path}")
         return render_template('error.html',
                                error="Page not found"), 404
 
@@ -559,11 +638,31 @@ def not_found(error):
 @app.errorhandler(500)
 def internal_error(error):
     """Handle 500 errors"""
+    logger.error(f"500 - Internal server error: {error}", exc_info=True)
+
     if request.path.startswith('/api/'):
-        return jsonify({'error': 'Internal server error'}), 500
+        return jsonify({
+            'error': 'Internal server error',
+            'message': 'An unexpected error occurred'
+        }), 500
     else:
         return render_template('error.html',
                                error="Internal server error"), 500
+
+
+@app.errorhandler(429)
+def ratelimit_handler(error):
+    """Handle rate limit errors"""
+    logger.warning(f"Rate limit exceeded for {get_remote_address()}")
+
+    if request.path.startswith('/api/'):
+        return jsonify({
+            'error': 'Too many requests',
+            'message': 'Rate limit exceeded. Please try again later.'
+        }), 429
+    else:
+        return render_template('error.html',
+                               error="Too many requests. Please try again later."), 429
 
 
 # ===============================
@@ -572,41 +671,60 @@ def internal_error(error):
 
 def start_server():
     """Start the Flask server and sync engine"""
-    print("Starting Pi Calendar Server...")
+    logger.info("=" * 70)
+    logger.info("Starting Pi Calendar Server")
+    logger.info("=" * 70)
 
     # Start sync engine if available
     if sync_engine:
         try:
             sync_engine.start()
+            logger.info("✓ Sync engine started successfully")
         except Exception as e:
-            print(f"Error starting sync engine: {e}")
+            logger.error(f"Error starting sync engine: {e}", exc_info=True)
+    else:
+        logger.warning("⚠ Sync engine not available")
 
     # Get server configuration
-    host = config.get('server.host', '0.0.0.0')
-    port = config.get('server.port', 5000)
-    debug = config.get('server.debug', False)
+    host = config.get('server.host', DEFAULT_SERVER_HOST)
+    port = config.get('server.port', DEFAULT_SERVER_PORT)
+    debug = config.get('server.debug', DEFAULT_SERVER_DEBUG)
 
-    print(f"Server starting on http://{host}:{port}")
-    print(f"Access the web interface at: http://localhost:{port}")
-    print(f"API endpoint for Pi Zero clients: http://{host}:{port}/api")
+    logger.info(f"Server configuration:")
+    logger.info(f"  Host: {host}")
+    logger.info(f"  Port: {port}")
+    logger.info(f"  Debug: {debug}")
+    logger.info(f"  API Version: {API_VERSION}")
+    logger.info(f"  Rate Limit: {API_RATE_LIMIT_PER_HOUR} requests/hour")
+    logger.info("=" * 70)
+    logger.info(f"🚀 Server starting on http://{host}:{port}")
+    logger.info(f"📱 Web interface: http://localhost:{port}")
+    logger.info(f"🔌 API endpoint: http://{host}:{port}/api")
+    logger.info("=" * 70)
 
     # Run Flask app
     try:
         app.run(host=host, port=port, debug=debug, threaded=True)
     except Exception as e:
-        print(f"Error starting Flask server: {e}")
+        logger.critical(f"Error starting Flask server: {e}", exc_info=True)
         raise
 
 
 def stop_server():
     """Stop the server and sync engine"""
-    print("Stopping Pi Calendar Server...")
+    logger.info("=" * 70)
+    logger.info("Stopping Pi Calendar Server")
+    logger.info("=" * 70)
+
     if sync_engine:
         try:
             sync_engine.stop()
+            logger.info("✓ Sync engine stopped")
         except Exception as e:
-            print(f"Error stopping sync engine: {e}")
-    print("Server stopped")
+            logger.error(f"Error stopping sync engine: {e}", exc_info=True)
+
+    logger.info("✓ Server stopped")
+    logger.info("=" * 70)
 
 
 if __name__ == '__main__':
