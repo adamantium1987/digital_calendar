@@ -378,3 +378,5 @@ else:
 else
     echo "Note: Install client dependencies first with: cd $APP_DIR && source venv/bin/activate && pip install requests"
 fi $CONFIG_DIR/client-configs/pi-zero-config.json"
+
+

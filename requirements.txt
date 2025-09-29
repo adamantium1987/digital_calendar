@@ -8,6 +8,7 @@ requests==2.31.0
 cryptography==41.0.4
 apscheduler==3.10.4
 vobject==0.9.6.1
+flask-cors==4.0.0
 
 # Client Dependencies (Pi Zero)
 # requests already included above
