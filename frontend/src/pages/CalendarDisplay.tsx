@@ -150,7 +150,12 @@ export const CalendarDisplay: React.FC = () => {
             <div className={`day-number ${isToday ? 'today' : ''}`}>{date.getDate()}</div>
           </div>
           {dayEvents.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '2rem 0.5rem', color: 'var(--neutral-400)', fontSize: '0.75rem' }}>
+            <div style={{
+              textAlign: 'center',
+              padding: '2rem 0.5rem',
+              color: 'var(--text-muted)',
+              fontSize: '0.75rem'
+            }}>
               No events
             </div>
           ) : (
@@ -158,7 +163,7 @@ export const CalendarDisplay: React.FC = () => {
               <div
                 key={event.id}
                 className="compact-event"
-                style={{ background: event.color || '#667eea' }}
+                style={{ background: event.color || 'var(--primary-500)' }}
                 onClick={() => goToDate(date.getFullYear(), date.getMonth(), date.getDate())}
               >
                 <div className="title">
@@ -216,7 +221,7 @@ export const CalendarDisplay: React.FC = () => {
             <div
               key={idx}
               className="month-event"
-              style={{ background: event.color || '#667eea' }}
+              style={{ background: event.color || 'var(--primary-500)' }}
             >
               {event.title.length > 25 ? event.title.substring(0, 25) + '...' : event.title}
             </div>
@@ -238,7 +243,7 @@ export const CalendarDisplay: React.FC = () => {
   if (loading) {
     return (
       <div className="loading-container">
-        <div className="loading">Loading events</div>
+        <div className="loading">Loading events...</div>
       </div>
     );
   }
@@ -247,7 +252,7 @@ export const CalendarDisplay: React.FC = () => {
     <div className="container">
       <div className="header">
         <h1>Calendar</h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+        <div className="header-controls">
           <div className="view-controls">
             <button
               className={`view-btn ${currentView === 'day' ? 'active' : ''}`}

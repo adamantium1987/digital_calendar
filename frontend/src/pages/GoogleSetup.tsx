@@ -1,3 +1,4 @@
+// GoogleSetup.tsx - Using CSS classes
 import React, { useState } from 'react';
 import { api } from '../utils/api';
 import { Header } from '../components/Header';
@@ -40,10 +41,29 @@ export const GoogleSetup: React.FC<GoogleSetupProps> = ({ navigate }) => {
 
   return (
     <div className="container">
-      <Header navigate={navigate} />
+      <Header navigate={navigate} title="Google Calendar Setup" />
 
       <div className="card">
-        <h2>Google Calendar Setup</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
+          <div style={{
+            width: '48px',
+            height: '48px',
+            background: 'linear-gradient(135deg, #4285f4, #34a853)',
+            borderRadius: 'var(--radius-lg)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'white',
+            fontSize: '1.5rem',
+            fontWeight: '700'
+          }}>
+            G
+          </div>
+          <div>
+            <h2 style={{ margin: 0, marginBottom: 'var(--space-1)' }}>Google Calendar Setup</h2>
+            <p style={{ margin: 0, fontSize: '0.875rem' }}>Connect your Google Calendar account</p>
+          </div>
+        </div>
 
         {error && (
           <div className="error">{error}</div>
@@ -98,16 +118,19 @@ export const GoogleSetup: React.FC<GoogleSetupProps> = ({ navigate }) => {
             />
           </div>
 
-          <button type="submit" disabled={submitting} className="btn">
-            {submitting ? 'Adding Account...' : 'Add Google Account'}
-          </button>
+          <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'var(--space-4)' }}>
+            <button type="submit" disabled={submitting} className="btn" style={{ flex: 1 }}>
+              {submitting ? 'Adding Account...' : 'Add Google Account'}
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/setup')}
+              className="btn btn-secondary"
+            >
+              Back to Setup
+            </button>
+          </div>
         </form>
-
-        <p>
-          <button onClick={() => navigate('/setup')} className="btn-link">
-            ← Back to Account Setup
-          </button>
-        </p>
       </div>
     </div>
   );

@@ -926,6 +926,62 @@ def debug_chores():
         return jsonify({'error': str(e)}), 500
 
 
+# Add this to server/api/routes.py after the existing get_chores function
+
+@api_bp.route('/chores/summary')
+@rate_limit(f"{API_RATE_LIMIT_PER_HOUR} per hour")
+def get_chores_summary():
+    """Get chore summary statistics for dashboard display"""
+    try:
+        if not sync_engine:
+            return jsonify({'error': 'Sync engine not available'}), 503
+
+        chore_manager = ChoreManager(sync_engine.cache_manager)
+        week_start = chore_manager.get_current_week_start()
+
+        # Get all chore days for current week
+        chore_days = chore_manager.cache_manager.get_chore_days(week_start=week_start)
+
+        # Calculate statistics
+        total_tasks = len(chore_days)
+        completed_tasks = len([c for c in chore_days if c['completed']])
+        completion_rate = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+
+        # Group by child
+        children_stats = {}
+        for chore_day in chore_days:
+            child = chore_day['child_name']
+            if child not in children_stats:
+                children_stats[child] = {'total': 0, 'completed': 0}
+
+            children_stats[child]['total'] += 1
+            if chore_day['completed']:
+                children_stats[child]['completed'] += 1
+
+        # Add completion rates
+        for child_stats in children_stats.values():
+            child_stats['completion_rate'] = (
+                child_stats['completed'] / child_stats['total'] * 100
+                if child_stats['total'] > 0 else 0
+            )
+
+        return jsonify({
+            'summary': {
+                'total_tasks': total_tasks,
+                'completed_tasks': completed_tasks,
+                'completion_rate': round(completion_rate, 1),
+                'week_start': week_start
+            },
+            'children': children_stats,
+            'metadata': {
+                'updated_at': datetime.now().isoformat()
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting chore summary: {e}", exc_info=True)
+        return jsonify({'error': 'Internal server error'}), 500
+
 # ===============================
 # API INFORMATION ENDPOINT
 # ===============================
