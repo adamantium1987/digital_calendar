@@ -47,25 +47,31 @@ class ChoreManager:
             with open(self.csv_path, 'r', newline='', encoding='utf-8') as csvfile:
                 reader = csv.DictReader(csvfile)
 
+                # Define day columns to check
+                day_columns = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+
                 for row_num, row in enumerate(reader, start=2):
                     try:
                         child_name = row['child_name'].strip()
                         task = row['task'].strip()
-                        days_str = row['days'].strip()
 
-                        if not all([child_name, task, days_str]):
-                            logger.warning(f"Empty fields in CSV row {row_num}, skipping")
+                        if not all([child_name, task]):
+                            logger.warning(f"Empty child_name or task in CSV row {row_num}, skipping")
                             continue
 
-                        # Parse pipe-delimited days
-                        days = [day.strip().lower() for day in days_str.split('|')]
-
-                        # Validate day names
-                        valid_days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
-                        days = [day for day in days if day in valid_days]
+                        # Parse individual day columns (Y means enabled)
+                        days = []
+                        for day in day_columns:
+                            try:
+                                day_value = row[day].strip().upper()
+                                if day_value == 'Y':
+                                    days.append(day)
+                            except KeyError:
+                                logger.warning(f"Missing column '{day}' in CSV row {row_num}")
+                                continue
 
                         if not days:
-                            logger.warning(f"No valid days found in CSV row {row_num}, skipping")
+                            logger.warning(f"No days marked 'Y' in CSV row {row_num}, skipping")
                             continue
 
                         # Create unique ID
