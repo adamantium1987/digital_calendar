@@ -12,6 +12,7 @@ REQUIREMENTS_FILE="requirements.txt"
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Function to log messages
@@ -34,6 +35,11 @@ log_warning() {
     echo -e "${YELLOW}[WARNING] $1${NC}" | tee -a "$LOG_FILE"
 }
 
+# Function to log info
+log_info() {
+    echo -e "${BLUE}[INFO] $1${NC}" | tee -a "$LOG_FILE"
+}
+
 # Function to check if command exists
 command_exists() {
     command -v "$1" >/dev/null 2>&1
@@ -48,16 +54,78 @@ if ! command_exists python3; then
     exit 1
 fi
 
-# Check if npm is installed
-if ! command_exists npm; then
-    log_error "npm is not installed. Please install Node.js and npm first."
-    exit 1
+# Check and install Node.js and npm if missing
+if ! command_exists node || ! command_exists npm; then
+    log_warning "Node.js or npm is not installed. Installing now..."
+    
+    # Ask user for installation method
+    echo -e "${YELLOW}Choose Node.js installation method:${NC}"
+    echo "1) NodeSource (Latest LTS - Recommended)"
+    echo "2) apt (Simpler but may be older version)"
+    read -p "Enter choice [1-2]: " choice
+    
+    case $choice in
+        1)
+            log_info "Installing Node.js via NodeSource..."
+            if command_exists curl; then
+                if curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - >> "$LOG_FILE" 2>&1; then
+                    if sudo apt install -y nodejs >> "$LOG_FILE" 2>&1; then
+                        log_success "Node.js and npm installed successfully via NodeSource"
+                    else
+                        log_error "Failed to install Node.js via apt"
+                        exit 1
+                    fi
+                else
+                    log_error "Failed to add NodeSource repository"
+                    exit 1
+                fi
+            else
+                log_error "curl is not installed. Install it with: sudo apt install curl"
+                exit 1
+            fi
+            ;;
+        2)
+            log_info "Installing Node.js via apt..."
+            if sudo apt update >> "$LOG_FILE" 2>&1; then
+                if sudo apt install -y nodejs npm >> "$LOG_FILE" 2>&1; then
+                    log_success "Node.js and npm installed successfully via apt"
+                else
+                    log_error "Failed to install Node.js and npm"
+                    exit 1
+                fi
+            else
+                log_error "Failed to update apt"
+                exit 1
+            fi
+            ;;
+        *)
+            log_error "Invalid choice. Exiting."
+            exit 1
+            ;;
+    esac
+    
+    # Verify installation
+    if command_exists node && command_exists npm; then
+        log_success "Node.js version: $(node --version)"
+        log_success "npm version: $(npm --version)"
+    else
+        log_error "Node.js or npm installation verification failed"
+        exit 1
+    fi
+else
+    log_info "Node.js version: $(node --version)"
+    log_info "npm version: $(npm --version)"
 fi
 
-# Check if screen is installed
+# Check and install screen if missing
 if ! command_exists screen; then
-    log_error "screen is not installed. Please install screen first (sudo apt install screen)."
-    exit 1
+    log_warning "screen is not installed. Installing now..."
+    if sudo apt update >> "$LOG_FILE" 2>&1 && sudo apt install -y screen >> "$LOG_FILE" 2>&1; then
+        log_success "screen installed successfully"
+    else
+        log_error "Failed to install screen"
+        exit 1
+    fi
 fi
 
 # Step 1: Create Python virtual environment
@@ -79,7 +147,15 @@ else
     exit 1
 fi
 
-# Step 3: Install Python requirements
+# Step 3: Upgrade pip
+log "Upgrading pip..."
+if pip install --upgrade pip >> "$LOG_FILE" 2>&1; then
+    log_success "pip upgraded successfully"
+else
+    log_warning "Failed to upgrade pip, continuing anyway..."
+fi
+
+# Step 4: Install Python requirements
 log "Installing Python requirements..."
 if [ -f "$REQUIREMENTS_FILE" ]; then
     if pip install -r "$REQUIREMENTS_FILE" >> "$LOG_FILE" 2>&1; then
@@ -92,7 +168,7 @@ else
     log_warning "requirements.txt not found, skipping Python package installation"
 fi
 
-# Step 4: Install npm packages
+# Step 5: Install npm packages
 log "Installing npm packages..."
 if [ -f "package.json" ]; then
     if npm install >> "$LOG_FILE" 2>&1; then
@@ -105,13 +181,13 @@ else
     log_warning "package.json not found, skipping npm installation"
 fi
 
-# Step 5: Check if backend module exists
+# Step 6: Check if backend module exists
 log "Checking backend module..."
 if [ ! -d "backend" ] || [ ! -f "backend/app.py" ]; then
     log_warning "backend/app.py not found. Backend screen session may fail."
 fi
 
-# Step 6: Kill existing screen sessions if they exist
+# Step 7: Kill existing screen sessions if they exist
 log "Checking for existing screen sessions..."
 if screen -list | grep -q "digital_calendar_backend"; then
     log_warning "Killing existing digital_calendar_backend session"
@@ -123,7 +199,10 @@ if screen -list | grep -q "digital_calendar_frontend"; then
     screen -S digital_calendar_frontend -X quit
 fi
 
-# Step 7: Start backend in screen session
+# Give a moment for sessions to fully terminate
+sleep 1
+
+# Step 8: Start backend in screen session
 log "Starting backend in screen session..."
 if screen -dmS digital_calendar_backend bash -c "source $VENV_DIR/bin/activate && python -m backend.app"; then
     log_success "Backend screen session started"
@@ -135,7 +214,7 @@ fi
 # Give backend a moment to start
 sleep 2
 
-# Step 8: Start frontend in screen session
+# Step 9: Start frontend in screen session
 log "Starting frontend in screen session..."
 if screen -dmS digital_calendar_frontend bash -c "npm start"; then
     log_success "Frontend screen session started"
@@ -148,17 +227,26 @@ fi
 log "=== Setup Complete ==="
 log_success "Both services are running in screen sessions"
 echo ""
-echo -e "${GREEN}Setup completed successfully!${NC}"
+echo -e "${GREEN}╔════════════════════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║          Setup completed successfully!                 ║${NC}"
+echo -e "${GREEN}╚════════════════════════════════════════════════════════╝${NC}"
 echo ""
-echo "To view running sessions:"
-echo "  screen -ls"
+echo -e "${BLUE}Installed Versions:${NC}"
+echo "  Node.js: $(node --version)"
+echo "  npm: $(npm --version)"
+echo "  Python: $(python3 --version)"
 echo ""
-echo "To attach to backend:"
-echo "  screen -r digital_calendar_backend"
+echo -e "${BLUE}Screen Sessions:${NC}"
+echo "  To view running sessions:"
+echo "    screen -ls"
 echo ""
-echo "To attach to frontend:"
-echo "  screen -r digital_calendar_frontend"
+echo "  To attach to backend:"
+echo "    screen -r digital_calendar_backend"
 echo ""
-echo "To detach from a session: Ctrl+A, then D"
+echo "  To attach to frontend:"
+echo "    screen -r digital_calendar_frontend"
 echo ""
-echo "Log file: $LOG_FILE"
+echo "  To detach from a session: ${YELLOW}Ctrl+A, then D${NC}"
+echo ""
+echo -e "${BLUE}Log file:${NC} $LOG_FILE"
+echo ""
