@@ -1,3 +1,4 @@
+// Dashboard.tsx - Using CSS classes
 import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../utils/api';
 import { Header } from '../components/Header';
@@ -27,16 +28,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ navigate }) => {
     return () => clearInterval(interval);
   }, []);
 
-  const getIsoWeekStart = (d: Date) => {
-    const copy = new Date(d);
-    const day = copy.getDay(); // Sunday = 0
-    copy.setDate(copy.getDate() - day);
-    return copy.toISOString().slice(0, 10);
-  };
-
   const loadChores = useCallback(async () => {
     try {
-      const week = getIsoWeekStart(new Date());
       const res = await api.get<any>(`/chores`);
       const list = res?.chores ?? [];
       setChores(list);
@@ -70,7 +63,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ navigate }) => {
     try {
       const res = (await api.post('/sync')) as { message?: string };
       setToast({ message: res.message || 'Sync started', type: 'success' });
-
       setTimeout(loadDashboardData, 2000);
     } catch (error) {
       setToast({ message: 'Sync failed', type: 'error' });
@@ -79,13 +71,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ navigate }) => {
     }
   };
 
-  // Chore actions
   const handleChoreSync = async () => {
     setChoreSyncing(true);
     try {
-     const res = (await api.post('/chores/sync')) as { message?: string };
-    setToast({ message: res.message || 'Chores sync started', type: 'success' });
-      // refresh chores after a short delay
+      const res = (await api.post('/chores/sync')) as { message?: string };
+      setToast({ message: res.message || 'Chores sync started', type: 'success' });
       setTimeout(loadChores, 1500);
     } catch (err) {
       console.error('Chore sync failed', err);
@@ -100,7 +90,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ navigate }) => {
     try {
       const res = (await api.post('/chores/load')) as { message?: string };
       setToast({ message: res.message || 'Chores loaded', type: 'success' });
-
       await loadChores();
     } catch (err) {
       console.error('Chore load failed', err);
@@ -115,7 +104,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ navigate }) => {
     const refreshIfReturned = async () => {
       const ts = sessionStorage.getItem('opened_chore_page_at');
       if (!ts) return;
-      // If flag exists, user previously navigated to /chores — refresh and clear flag
       try {
         await loadChores();
       } catch (e) {
@@ -145,7 +133,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ navigate }) => {
   if (loading) {
     return (
       <div className="loading-container">
-        <div className="loading">Loading dashboard</div>
+        <div className="loading">Loading dashboard...</div>
       </div>
     );
   }
@@ -154,88 +142,224 @@ export const Dashboard: React.FC<DashboardProps> = ({ navigate }) => {
 
   return (
     <div className="container">
-      <Header navigate={navigate} />
+      <Header navigate={navigate} title="Dashboard" />
 
       <div className="status-grid">
         <div className="card">
-          <h3>Sync Status</h3>
-          <p className={syncStatus?.currently_syncing ? 'status-warning' : 'status-good'}>
-            {syncStatus?.currently_syncing ? 'Currently syncing...' : 'Ready'}
-          </p>
-          <p>
-            <strong>Last Sync:</strong>{' '}
-            {syncStatus?.last_full_sync
-              ? new Date(syncStatus.last_full_sync).toLocaleString()
-              : 'Never'}
-          </p>
-          <p><strong>Total Events:</strong> {syncStatus?.total_events || 0}</p>
-          <p><strong>Total Calendars:</strong> {syncStatus?.total_calendars || 0}</p>
+          <h3>🔄 Sync Status</h3>
+          <div style={{ marginBottom: 'var(--space-4)' }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-2)',
+              marginBottom: 'var(--space-2)'
+            }}>
+              <div style={{
+                width: '12px',
+                height: '12px',
+                borderRadius: 'var(--radius-full)',
+                backgroundColor: syncStatus?.currently_syncing ? 'var(--warning-500)' : 'var(--success-500)'
+              }}></div>
+              <span className={syncStatus?.currently_syncing ? 'status-warning' : 'status-good'}>
+                {syncStatus?.currently_syncing ? 'Currently syncing...' : 'Ready'}
+              </span>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 'var(--space-3)' }}>
+            <p style={{ margin: 0, fontSize: '0.875rem' }}>
+              <strong>Last Sync:</strong>{' '}
+              {syncStatus?.last_full_sync
+                ? new Date(syncStatus.last_full_sync).toLocaleString()
+                : 'Never'}
+            </p>
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 'var(--space-3)',
+            marginBottom: 'var(--space-4)'
+          }}>
+            <div style={{
+              background: 'var(--bg-primary)',
+              padding: 'var(--space-3)',
+              borderRadius: 'var(--radius-lg)',
+              textAlign: 'center'
+            }}>
+              <div style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--primary-500)' }}>
+                {syncStatus?.total_events || 0}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Events</div>
+            </div>
+            <div style={{
+              background: 'var(--bg-primary)',
+              padding: 'var(--space-3)',
+              borderRadius: 'var(--radius-lg)',
+              textAlign: 'center'
+            }}>
+              <div style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--primary-500)' }}>
+                {syncStatus?.total_calendars || 0}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Calendars</div>
+            </div>
+          </div>
+
           <button
             onClick={handleForceSync}
             disabled={syncing || syncStatus?.currently_syncing}
             className="btn"
+            style={{ width: '100%' }}
           >
             {syncing ? 'Syncing...' : 'Force Sync Now'}
           </button>
         </div>
 
         <div className="card">
-          <h3>Cache Statistics</h3>
-          <p><strong>Cached Events:</strong> {cacheStats?.total_events || 0}</p>
-          <p><strong>Cached Calendars:</strong> {cacheStats?.total_calendars || 0}</p>
+          <h3>📊 Cache Statistics</h3>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 'var(--space-3)',
+            marginBottom: 'var(--space-4)'
+          }}>
+            <div style={{
+              background: 'var(--bg-primary)',
+              padding: 'var(--space-3)',
+              borderRadius: 'var(--radius-lg)',
+              textAlign: 'center'
+            }}>
+              <div style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--success-500)' }}>
+                {cacheStats?.total_events || 0}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Cached Events</div>
+            </div>
+            <div style={{
+              background: 'var(--bg-primary)',
+              padding: 'var(--space-3)',
+              borderRadius: 'var(--radius-lg)',
+              textAlign: 'center'
+            }}>
+              <div style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--success-500)' }}>
+                {cacheStats?.total_calendars || 0}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Cached Calendars</div>
+            </div>
+          </div>
+
           {cacheStats?.date_range?.earliest && cacheStats?.date_range?.latest && (
-            <p>
+            <div style={{
+              background: 'var(--bg-primary)',
+              padding: 'var(--space-3)',
+              borderRadius: 'var(--radius-lg)',
+              fontSize: '0.875rem'
+            }}>
               <strong>Date Range:</strong><br />
               {new Date(cacheStats.date_range.earliest).toLocaleDateString()} to{' '}
               {new Date(cacheStats.date_range.latest).toLocaleDateString()}
-            </p>
+            </div>
           )}
         </div>
 
         <div className="card">
-          <h3>Connected Accounts</h3>
-          <p><strong>Google:</strong> {accounts.google?.length || 0}</p>
-          <p><strong>Apple:</strong> {accounts.apple?.length || 0}</p>
-          <p><strong>Total:</strong> {totalAccounts}</p>
+          <h3>🔗 Connected Accounts</h3>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: 'var(--space-3)',
+            marginBottom: 'var(--space-4)'
+          }}>
+            <div style={{
+              background: 'var(--bg-primary)',
+              padding: 'var(--space-3)',
+              borderRadius: 'var(--radius-lg)',
+              textAlign: 'center'
+            }}>
+              <div style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--primary-500)' }}>
+                {accounts.google?.length || 0}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Google</div>
+            </div>
+            <div style={{
+              background: 'var(--bg-primary)',
+              padding: 'var(--space-3)',
+              borderRadius: 'var(--radius-lg)',
+              textAlign: 'center'
+            }}>
+              <div style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--primary-500)' }}>
+                {accounts.apple?.length || 0}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Apple</div>
+            </div>
+            <div style={{
+              background: 'var(--bg-primary)',
+              padding: 'var(--space-3)',
+              borderRadius: 'var(--radius-lg)',
+              textAlign: 'center'
+            }}>
+              <div style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--success-500)' }}>
+                {totalAccounts}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Total</div>
+            </div>
+          </div>
+
           {syncStatus?.errors && syncStatus.errors.length > 0 && (
-            <p className="status-error">
+            <div style={{
+              background: 'var(--error-50)',
+              color: 'var(--error-600)',
+              padding: 'var(--space-3)',
+              borderRadius: 'var(--radius-lg)',
+              marginBottom: 'var(--space-4)',
+              fontSize: '0.875rem'
+            }}>
               <strong>Recent Errors:</strong> {syncStatus.errors.length}
-            </p>
+            </div>
           )}
-          <button onClick={() => navigate('/setup')} className="btn btn-secondary">
+
+          <button onClick={() => navigate('/setup')} className="btn btn-secondary" style={{ width: '100%' }}>
             Manage Accounts
           </button>
         </div>
 
-        {/* Chore Chart card matching the Connected Accounts style */}
         <div className="card">
-          <h3>Chore Chart</h3>
-          <p><strong>Total Chores:</strong> {chores?.length || 0}</p>
-          {syncStatus?.errors && syncStatus.errors.length > 0 && (
-            <p className="status-error">
-              <strong>Recent Errors:</strong> {syncStatus.errors.length}
-            </p>
-          )}
-          <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-            <button
-              onClick={handleChoreSync}
-              className="btn"
-              disabled={choreSyncing}
-            >
-              {choreSyncing ? 'Syncing...' : 'Sync'}
-            </button>
+          <h3>📝 Chore Chart</h3>
+          <div style={{
+            background: 'var(--bg-primary)',
+            padding: 'var(--space-4)',
+            borderRadius: 'var(--radius-lg)',
+            textAlign: 'center',
+            marginBottom: 'var(--space-4)'
+          }}>
+            <div style={{ fontSize: '2rem', fontWeight: '700', color: 'var(--primary-500)' }}>
+              {chores?.length || 0}
+            </div>
+            <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Total Chores</div>
+          </div>
 
-            <button
-              onClick={handleChoreLoad}
-              className="btn btn-secondary"
-              disabled={choreLoading}
-            >
-              {choreLoading ? 'Loading...' : 'Load'}
-            </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+              <button
+                onClick={handleChoreSync}
+                className="btn"
+                disabled={choreSyncing}
+                style={{ flex: 1 }}
+              >
+                {choreSyncing ? 'Syncing...' : 'Sync'}
+              </button>
+
+              <button
+                onClick={handleChoreLoad}
+                className="btn btn-secondary"
+                disabled={choreLoading}
+                style={{ flex: 1 }}
+              >
+                {choreLoading ? 'Loading...' : 'Load'}
+              </button>
+            </div>
 
             <button
               onClick={() => {
-                // set a flag so we know user opened the chores page — refresh when they return
                 try {
                   sessionStorage.setItem('opened_chore_page_at', Date.now().toString());
                 } catch (e) {
@@ -244,6 +368,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ navigate }) => {
                 navigate('/api/chores');
               }}
               className="btn btn-secondary"
+              style={{ width: '100%' }}
             >
               Open Chore Chart
             </button>
@@ -252,17 +377,70 @@ export const Dashboard: React.FC<DashboardProps> = ({ navigate }) => {
       </div>
 
       <div className="card">
-        <h3>API Information</h3>
-        <p>Pi Zero clients should connect to:</p>
-        <code>http://{window.location.host}/display</code>
+        <h3>🔗 API Information</h3>
+        <p style={{ marginBottom: 'var(--space-4)' }}>Pi Zero clients should connect to:</p>
+        <div style={{
+          background: 'var(--bg-primary)',
+          padding: 'var(--space-3)',
+          borderRadius: 'var(--radius-lg)',
+          marginBottom: 'var(--space-4)',
+          fontFamily: 'monospace',
+          fontSize: '0.875rem'
+        }}>
+          http://{window.location.host}/display
+        </div>
 
-        <h3>Available Endpoints:</h3>
-        <ul style={{lineHeight: '2'}}>
-          <li><code>GET /api/events</code> - Get calendar events</li>
-          <li><code>GET /api/calendars</code> - Get calendar list</li>
-          <li><code>GET /api/status</code> - Get sync status</li>
-          <li><code>GET /api/health</code> - Health check</li>
-        </ul>
+        <h4 style={{ marginBottom: 'var(--space-3)' }}>Available Endpoints:</h4>
+        <div style={{
+          display: 'grid',
+          gap: 'var(--space-2)',
+          fontSize: '0.875rem'
+        }}>
+          <div style={{
+            background: 'var(--bg-primary)',
+            padding: 'var(--space-3)',
+            borderRadius: 'var(--radius-lg)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <code style={{ fontWeight: '600' }}>GET /api/events</code>
+            <span style={{ color: 'var(--text-secondary)' }}>Get calendar events</span>
+          </div>
+          <div style={{
+            background: 'var(--bg-primary)',
+            padding: 'var(--space-3)',
+            borderRadius: 'var(--radius-lg)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <code style={{ fontWeight: '600' }}>GET /api/calendars</code>
+            <span style={{ color: 'var(--text-secondary)' }}>Get calendar list</span>
+          </div>
+          <div style={{
+            background: 'var(--bg-primary)',
+            padding: 'var(--space-3)',
+            borderRadius: 'var(--radius-lg)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <code style={{ fontWeight: '600' }}>GET /api/status</code>
+            <span style={{ color: 'var(--text-secondary)' }}>Get sync status</span>
+          </div>
+          <div style={{
+            background: 'var(--bg-primary)',
+            padding: 'var(--space-3)',
+            borderRadius: 'var(--radius-lg)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <code style={{ fontWeight: '600' }}>GET /api/health</code>
+            <span style={{ color: 'var(--text-secondary)' }}>Health check</span>
+          </div>
+        </div>
       </div>
 
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}

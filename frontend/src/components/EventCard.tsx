@@ -1,3 +1,4 @@
+// EventCard.tsx - Using CSS classes
 import React from 'react';
 import { CalendarEvent } from '../types';
 
@@ -22,7 +23,7 @@ export const EventCard: React.FC<EventCardProps> = ({ event }) => {
     <div
       className="event-card"
       style={{
-        background: event.color || '#667eea'
+        borderLeftColor: event.color || 'var(--primary-500)'
       }}
     >
       <h3>{event.title}</h3>
