@@ -1,25 +1,37 @@
 # server/sync/cache_manager.py
 """
-Local cache management using SQLite - FIXED VERSION
+Local cache management using SQLite
 Stores calendar events and metadata for offline access and fast retrieval
+Includes batch operations, connection pooling, and automatic cleanup
 """
 
 import sqlite3
 import json
 import threading
-from datetime import datetime, timedelta, timezone  # FIXED: Added timedelta import
+import logging
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional
 from pathlib import Path
+from contextlib import contextmanager
 
 from ..calendar_sources.base import CalendarEvent
 from ..config.settings import config
+from ..config.constants import (
+    CACHE_EXPIRY_DAYS,
+    DB_CONNECTION_TIMEOUT,
+    DB_MAX_RETRIES
+)
+from .migrations import MigrationManager
+
+logger = logging.getLogger(__name__)
 
 
 class CacheManager:
-    """Manages local SQLite cache for calendar data"""
+    """Manages local SQLite cache for calendar data with improved performance"""
 
     def __init__(self, db_path: str = None):
-        """Initialize cache manager
+        """
+        Initialize cache manager
 
         Args:
             db_path: Path to SQLite database file
@@ -31,77 +43,59 @@ class CacheManager:
 
         self.db_path = str(db_path)
         self._lock = threading.Lock()
+        self._local = threading.local()
 
-        # Initialize database
+        # Initialize database and run migrations
         self._init_database()
 
-    def _init_database(self):
-        """Initialize SQLite database with required tables"""
+        logger.info(f"Cache manager initialized with database: {self.db_path}")
+
+    @contextmanager
+    def _get_connection(self):
+        """
+        Get thread-local database connection (connection pooling per thread)
+
+        Yields:
+            sqlite3.Connection
+        """
+        # Get or create connection for this thread
+        if not hasattr(self._local, 'connection') or self._local.connection is None:
+            self._local.connection = sqlite3.connect(
+                self.db_path,
+                timeout=DB_CONNECTION_TIMEOUT,
+                check_same_thread=False
+            )
+            self._local.connection.execute("PRAGMA foreign_keys = ON")
+            self._local.connection.row_factory = sqlite3.Row
+            logger.debug(f"Created new database connection for thread {threading.current_thread().name}")
+
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.execute("PRAGMA foreign_keys = ON")
+            yield self._local.connection
+        except Exception as e:
+            self._local.connection.rollback()
+            logger.error(f"Database error, rolled back transaction: {e}")
+            raise
+        finally:
+            # Don't close connection - keep it for thread reuse
+            pass
 
-                # Events table
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS events (
-                        id TEXT PRIMARY KEY,
-                        account_id TEXT NOT NULL,
-                        calendar_id TEXT NOT NULL,
-                        title TEXT NOT NULL,
-                        description TEXT,
-                        start_time TEXT NOT NULL,
-                        end_time TEXT NOT NULL,
-                        all_day BOOLEAN NOT NULL,
-                        location TEXT,
-                        color TEXT,
-                        attendees TEXT,  -- JSON array
-                        created_at TEXT NOT NULL,
-                        updated_at TEXT NOT NULL,
-                        UNIQUE(id, account_id, calendar_id)
-                    )
-                """)
-
-                # Calendars table
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS calendars (
-                        id TEXT NOT NULL,
-                        account_id TEXT NOT NULL,
-                        name TEXT NOT NULL,
-                        description TEXT,
-                        color TEXT,
-                        primary_calendar BOOLEAN,
-                        access_role TEXT,
-                        created_at TEXT NOT NULL,
-                        updated_at TEXT NOT NULL,
-                        PRIMARY KEY (id, account_id)
-                    )
-                """)
-
-                # Sync status table
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS sync_status (
-                        account_id TEXT PRIMARY KEY,
-                        calendar_id TEXT NOT NULL,
-                        last_sync TEXT NOT NULL,
-                        event_count INTEGER NOT NULL,
-                        last_error TEXT
-                    )
-                """)
-
-                # Create indexes for performance
-                conn.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_events_account_calendar ON events(account_id, calendar_id)")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_events_time_range ON events(start_time, end_time)")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_events_all_day ON events(all_day)")
-
-                conn.commit()
+    def _init_database(self):
+        """Initialize SQLite database with migrations"""
+        try:
+            # Run migrations to ensure schema is up to date
+            migration_manager = MigrationManager(self.db_path)
+            if migration_manager.migrate():
+                logger.info("Database schema up to date")
+            else:
+                logger.error("Database migration failed")
 
         except Exception as e:
-            print(f"Error initializing database: {e}")
+            logger.error(f"Error initializing database: {e}", exc_info=True)
             raise
 
     def store_events(self, account_id: str, calendar_id: str, events: List[CalendarEvent]):
-        """Store calendar events in cache
+        """
+        Store calendar events in cache using batch operations
 
         Args:
             account_id: Account identifier
@@ -109,96 +103,113 @@ class CacheManager:
             events: List of calendar events to store
         """
         if not events:
+            logger.debug(f"No events to store for {account_id}/{calendar_id}")
             return
 
         with self._lock:
-            try:
-                with sqlite3.connect(self.db_path) as conn:
-                    now = datetime.now(timezone.utc).isoformat()
+            retry_count = 0
+            while retry_count < DB_MAX_RETRIES:
+                try:
+                    with self._get_connection() as conn:
+                        now = datetime.now(timezone.utc).isoformat()
 
-                    # Clear existing events for this calendar
-                    conn.execute(
-                        "DELETE FROM events WHERE account_id = ? AND calendar_id = ?",
-                        (account_id, calendar_id)
-                    )
+                        # Clear existing events for this calendar
+                        conn.execute(
+                            "DELETE FROM events WHERE account_id = ? AND calendar_id = ?",
+                            (account_id, calendar_id)
+                        )
 
-                    # Insert new events
-                    for event in events:
-                        # Convert attendees to JSON
-                        attendees_json = json.dumps(event.attendees or [])
+                        # Prepare batch insert data
+                        event_data = []
+                        for event in events:
+                            # Convert attendees to JSON
+                            attendees_json = json.dumps(event.attendees or [])
 
-                        # FIXED: Ensure all datetime objects are properly converted
-                        start_time = event.start_time.isoformat() if hasattr(event.start_time, 'isoformat') else str(
-                            event.start_time)
-                        end_time = event.end_time.isoformat() if hasattr(event.end_time, 'isoformat') else str(
-                            event.end_time)
+                            # Ensure datetime objects are properly converted
+                            start_time = event.start_time.isoformat() if hasattr(
+                                event.start_time, 'isoformat'
+                            ) else str(event.start_time)
+                            end_time = event.end_time.isoformat() if hasattr(
+                                event.end_time, 'isoformat'
+                            ) else str(event.end_time)
 
-                        conn.execute("""
+                            event_data.append((
+                                event.id,
+                                account_id,
+                                calendar_id,
+                                event.title,
+                                event.description or '',
+                                start_time,
+                                end_time,
+                                event.all_day,
+                                event.location or '',
+                                event.color or '',
+                                attendees_json,
+                                now,
+                                now
+                            ))
+
+                        # Batch insert all events
+                        conn.executemany("""
                             INSERT OR REPLACE INTO events 
                             (id, account_id, calendar_id, title, description, start_time, end_time,
                              all_day, location, color, attendees, created_at, updated_at)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, event_data)
+
+                        # Update sync status
+                        conn.execute("""
+                            INSERT OR REPLACE INTO sync_status 
+                            (account_id, calendar_id, last_sync, event_count, last_error)
+                            VALUES (?, ?, ?, ?, ?)
                         """, (
-                            event.id,
                             account_id,
                             calendar_id,
-                            event.title,
-                            event.description or '',
-                            start_time,
-                            end_time,
-                            event.all_day,
-                            event.location or '',
-                            event.color or '',
-                            attendees_json,
                             now,
-                            now
+                            len(events),
+                            None
                         ))
 
-                    # Update sync status
-                    conn.execute("""
-                        INSERT OR REPLACE INTO sync_status 
-                        (account_id, calendar_id, last_sync, event_count, last_error)
-                        VALUES (?, ?, ?, ?, ?)
-                    """, (
-                        account_id,
-                        calendar_id,
-                        now,
-                        len(events),
-                        None
-                    ))
+                        conn.commit()
+                        logger.info(f"Stored {len(events)} events for {account_id}/{calendar_id}")
+                        return
 
-                    conn.commit()
+                except sqlite3.OperationalError as e:
+                    retry_count += 1
+                    if retry_count >= DB_MAX_RETRIES:
+                        logger.error(f"Failed to store events after {DB_MAX_RETRIES} retries: {e}")
+                        raise
+                    logger.warning(f"Database locked, retry {retry_count}/{DB_MAX_RETRIES}")
+                    import time
+                    time.sleep(0.1 * retry_count)
 
-            except Exception as e:
-                print(f"Error storing events: {e}")
-                raise
+                except Exception as e:
+                    logger.error(f"Error storing events: {e}", exc_info=True)
+                    raise
 
     def store_calendars(self, account_id: str, calendars: List[Dict[str, Any]]):
-        """Store calendar metadata in cache
+        """
+        Store calendar metadata in cache using batch operations
 
         Args:
             account_id: Account identifier
             calendars: List of calendar info dicts
         """
         if not calendars:
+            logger.debug(f"No calendars to store for {account_id}")
             return
 
         with self._lock:
             try:
-                with sqlite3.connect(self.db_path) as conn:
+                with self._get_connection() as conn:
                     now = datetime.now(timezone.utc).isoformat()
 
                     # Clear existing calendars for this account
                     conn.execute("DELETE FROM calendars WHERE account_id = ?", (account_id,))
 
-                    # Insert new calendars
-                    for cal in calendars:
-                        conn.execute("""
-                            INSERT INTO calendars
-                            (id, account_id, name, description, color, primary_calendar, 
-                             access_role, created_at, updated_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """, (
+                    # Prepare batch insert data
+                    calendar_data = [
+                        (
                             cal['id'],
                             account_id,
                             cal['name'],
@@ -208,17 +219,29 @@ class CacheManager:
                             cal.get('access_role', 'reader'),
                             now,
                             now
-                        ))
+                        )
+                        for cal in calendars
+                    ]
+
+                    # Batch insert all calendars
+                    conn.executemany("""
+                        INSERT INTO calendars
+                        (id, account_id, name, description, color, primary_calendar, 
+                         access_role, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, calendar_data)
 
                     conn.commit()
+                    logger.info(f"Stored {len(calendars)} calendars for {account_id}")
 
             except Exception as e:
-                print(f"Error storing calendars: {e}")
+                logger.error(f"Error storing calendars: {e}", exc_info=True)
                 raise
 
     def get_events(self, start_date: datetime = None, end_date: datetime = None,
                    account_ids: List[str] = None, calendar_ids: List[str] = None) -> List[CalendarEvent]:
-        """Retrieve events from cache with optional filtering
+        """
+        Retrieve events from cache with optional filtering
 
         Args:
             start_date: Filter events starting after this date
@@ -231,10 +254,7 @@ class CacheManager:
         """
         with self._lock:
             try:
-                with sqlite3.connect(self.db_path) as conn:
-                    # FIXED: Set row factory for easier dict access
-                    conn.row_factory = sqlite3.Row
-
+                with self._get_connection() as conn:
                     # Build query
                     query = "SELECT * FROM events WHERE 1=1"
                     params = []
@@ -242,12 +262,16 @@ class CacheManager:
                     # Date range filtering
                     if start_date:
                         query += " AND end_time >= ?"
-                        start_iso = start_date.isoformat() if hasattr(start_date, 'isoformat') else str(start_date)
+                        start_iso = start_date.isoformat() if hasattr(
+                            start_date, 'isoformat'
+                        ) else str(start_date)
                         params.append(start_iso)
 
                     if end_date:
                         query += " AND start_time <= ?"
-                        end_iso = end_date.isoformat() if hasattr(end_date, 'isoformat') else str(end_date)
+                        end_iso = end_date.isoformat() if hasattr(
+                            end_date, 'isoformat'
+                        ) else str(end_date)
                         params.append(end_iso)
 
                     # Account filtering
@@ -275,14 +299,18 @@ class CacheManager:
                             # Parse attendees from JSON
                             attendees = json.loads(row['attendees']) if row['attendees'] else []
 
-                            # FIXED: Parse datetime strings with error handling
+                            # Parse datetime strings with error handling
                             try:
-                                start_time = datetime.fromisoformat(row['start_time'].replace('Z', '+00:00'))
-                                end_time = datetime.fromisoformat(row['end_time'].replace('Z', '+00:00'))
-                            except ValueError:
+                                start_time = datetime.fromisoformat(
+                                    row['start_time'].replace('Z', '+00:00')
+                                )
+                                end_time = datetime.fromisoformat(
+                                    row['end_time'].replace('Z', '+00:00')
+                                )
+                            except (ValueError, AttributeError):
                                 # Fallback for malformed datetime strings
-                                start_time = datetime.now()
-                                end_time = datetime.now() + timedelta(hours=1)
+                                logger.warning(f"Malformed datetime in event {row['id']}, skipping")
+                                continue
 
                             event = CalendarEvent(
                                 id=row['id'],
@@ -301,17 +329,19 @@ class CacheManager:
                             events.append(event)
 
                         except Exception as e:
-                            print(f"Error parsing event {row.get('id', 'unknown')}: {e}")
+                            logger.warning(f"Error parsing event {row.get('id', 'unknown')}: {e}")
                             continue
 
+                    logger.debug(f"Retrieved {len(events)} events from cache")
                     return events
 
             except Exception as e:
-                print(f"Error getting events: {e}")
+                logger.error(f"Error getting events: {e}", exc_info=True)
                 return []
 
     def get_calendars(self, account_id: str = None) -> Dict[str, List[Dict[str, Any]]]:
-        """Retrieve calendar metadata from cache
+        """
+        Retrieve calendar metadata from cache
 
         Args:
             account_id: Specific account ID (None = all accounts)
@@ -321,9 +351,7 @@ class CacheManager:
         """
         with self._lock:
             try:
-                with sqlite3.connect(self.db_path) as conn:
-                    conn.row_factory = sqlite3.Row
-
+                with self._get_connection() as conn:
                     if account_id:
                         cursor = conn.execute(
                             "SELECT * FROM calendars WHERE account_id = ? ORDER BY name",
@@ -352,52 +380,121 @@ class CacheManager:
 
                         result[acc_id].append(calendar_info)
 
+                    logger.debug(f"Retrieved calendars for {len(result)} accounts")
                     return result
 
             except Exception as e:
-                print(f"Error getting calendars: {e}")
+                logger.error(f"Error getting calendars: {e}", exc_info=True)
                 return {}
 
-    def get_sync_status(self, account_id: str = None) -> Dict[str, Any]:
-        """Get sync status for accounts
+    def cleanup_old_events(self, days: int = None):
+        """
+        Remove events older than specified days
 
         Args:
-            account_id: Specific account (None = all accounts)
+            days: Number of days to keep (default: CACHE_EXPIRY_DAYS)
+        """
+        if days is None:
+            days = CACHE_EXPIRY_DAYS
 
-        Returns:
-            Dict with sync status information
+        with self._lock:
+            try:
+                with self._get_connection() as conn:
+                    cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
+                    cutoff_iso = cutoff_date.isoformat()
+
+                    cursor = conn.execute(
+                        "DELETE FROM events WHERE end_time < ?",
+                        (cutoff_iso,)
+                    )
+                    deleted_count = cursor.rowcount
+                    conn.commit()
+
+                    if deleted_count > 0:
+                        logger.info(f"Cleaned up {deleted_count} old events (older than {days} days)")
+                    else:
+                        logger.debug(f"No old events to clean up")
+
+            except Exception as e:
+                logger.error(f"Error cleaning up old events: {e}", exc_info=True)
+
+    def clear_account_data(self, account_id: str):
+        """
+        Remove all data for a specific account
+
+        Args:
+            account_id: Account identifier
         """
         with self._lock:
             try:
-                with sqlite3.connect(self.db_path) as conn:
-                    conn.row_factory = sqlite3.Row
+                with self._get_connection() as conn:
+                    conn.execute("DELETE FROM events WHERE account_id = ?", (account_id,))
+                    conn.execute("DELETE FROM calendars WHERE account_id = ?", (account_id,))
+                    conn.execute("DELETE FROM sync_status WHERE account_id = ?", (account_id,))
+                    conn.commit()
 
-                    if account_id:
-                        cursor = conn.execute(
-                            "SELECT * FROM sync_status WHERE account_id = ?",
-                            (account_id,)
-                        )
-                    else:
-                        cursor = conn.execute("SELECT * FROM sync_status")
-
-                    rows = cursor.fetchall()
-
-                    result = {}
-                    for row in rows:
-                        acc_id = row['account_id']
-                        if acc_id not in result:
-                            result[acc_id] = []
-
-                        status = {
-                            'calendar_id': row['calendar_id'],
-                            'last_sync': row['last_sync'],
-                            'event_count': row['event_count'],
-                            'last_error': row['last_error']
-                        }
-
-                        result[acc_id].append(status)
-
-                    return result
+                    logger.info(f"Cleared all data for account: {account_id}")
 
             except Exception as e:
-                print(f"Error getting sync status: {e}")
+                logger.error(f"Error clearing account data: {e}", exc_info=True)
+                raise
+
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """
+        Get cache statistics
+
+        Returns:
+            Dict with cache statistics
+        """
+        with self._lock:
+            try:
+                with self._get_connection() as conn:
+                    # Total events
+                    cursor = conn.execute("SELECT COUNT(*) FROM events")
+                    total_events = cursor.fetchone()[0]
+
+                    # Total calendars
+                    cursor = conn.execute("SELECT COUNT(*) FROM calendars")
+                    total_calendars = cursor.fetchone()[0]
+
+                    # Events by account
+                    cursor = conn.execute("""
+                        SELECT account_id, COUNT(*) as count 
+                        FROM events 
+                        GROUP BY account_id
+                    """)
+                    events_by_account = {row['account_id']: row['count'] for row in cursor.fetchall()}
+
+                    # Date range
+                    cursor = conn.execute("""
+                        SELECT MIN(start_time) as earliest, MAX(end_time) as latest 
+                        FROM events
+                    """)
+                    row = cursor.fetchone()
+                    date_range = {
+                        'earliest': row['earliest'],
+                        'latest': row['latest']
+                    }
+
+                    return {
+                        'total_events': total_events,
+                        'total_calendars': total_calendars,
+                        'events_by_account': events_by_account,
+                        'date_range': date_range
+                    }
+
+            except Exception as e:
+                logger.error(f"Error getting cache stats: {e}", exc_info=True)
+                return {
+                    'total_events': 0,
+                    'total_calendars': 0,
+                    'events_by_account': {},
+                    'date_range': {'earliest': None, 'latest': None}
+                }
+
+    def close(self):
+        """Close all database connections"""
+        if hasattr(self._local, 'connection') and self._local.connection:
+            self._local.connection.close()
+            self._local.connection = None
+            logger.debug("Closed database connection")
