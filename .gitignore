@@ -32,6 +32,13 @@ env/
 *.swo
 *~
 
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
 # Config and credentials
 .pi_calendar/
 .pi_calendar_client/
