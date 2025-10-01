@@ -6,8 +6,8 @@ Provides clean JSON APIs for calendar data retrieval
 
 from flask import Blueprint, jsonify, request, current_app
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
 
+from ..sync.chore_manager import ChoreManager
 from ..sync.sync_engine import sync_engine
 from ..config.settings import config
 from ..config.logger import get_logger
@@ -28,7 +28,7 @@ def get_limiter():
         Limiter instance or None if not available
     """
     try:
-        return current_app.limiter
+        return None
     except (RuntimeError, AttributeError):
         logger.warning("Rate limiter not available in current context")
         return None
@@ -582,6 +582,351 @@ def get_accounts():
 
 
 # ===============================
+# CHORE CHART ENDPOINTS
+# ===============================
+
+@api_bp.route('/chores')
+@rate_limit(f"{API_RATE_LIMIT_PER_HOUR} per hour")
+def get_chores():
+    """Get chores with optional filtering
+
+    Query Parameters:
+        day: Day name (e.g., 'monday')
+        child: Child name
+        week: Week start date (ISO format)
+        format: 'grouped' (default) or 'individual'
+
+    Returns:
+        JSON object with chores list
+    """
+    try:
+        logger.info(f"Chores request from {request.remote_addr}")
+
+        if not sync_engine:
+            return jsonify({'error': 'Sync engine not available'}), 503
+
+        chore_manager = ChoreManager(sync_engine.cache_manager)
+
+        # Parse query parameters
+        day_name = request.args.get('day')
+        child_name = request.args.get('child')
+        week_start = request.args.get('week', chore_manager.get_current_week_start())
+        format_type = request.args.get('format', 'grouped')
+
+        if format_type == 'individual':
+            # Get individual day records
+            chore_days = chore_manager.cache_manager.get_chore_days(
+                day_name=day_name,
+                child_name=child_name,
+                week_start=week_start
+            )
+
+            return jsonify({
+                'chore_days': chore_days,
+                'metadata': {
+                    'total_records': len(chore_days),
+                    'week_start': week_start,
+                    'format': 'individual'
+                }
+            })
+        else:
+            # Get grouped chores (original format)
+            chores = chore_manager.cache_manager.get_chores(
+                day_name=day_name,
+                child_name=child_name,
+                week_start=week_start
+            )
+
+            # Convert to JSON-serializable format
+            chores_data = []
+            for chore in chores:
+                chore_data = {
+                    'id': chore.id,
+                    'child_name': chore.child_name,
+                    'task': chore.task,
+                    'days': chore.days,
+                    'completed': chore.completed,
+                    'week_start': chore.week_start
+                }
+                chores_data.append(chore_data)
+
+            return jsonify({
+                'chores': chores_data,
+                'metadata': {
+                    'total_chores': len(chores_data),
+                    'week_start': week_start,
+                    'format': 'grouped'
+                }
+            })
+
+    except Exception as e:
+        logger.error(f"Error getting chores: {e}", exc_info=True)
+        return jsonify({'error': 'Internal server error'}), 500
+    # Grouped chores:  /api/chores
+    # Individual day records:/api/chores?format=individual
+    # Specific day: /api/chores?day=monday&format=individual
+
+
+@api_bp.route('/chores/<int:chore_id>/<day_name>/complete', methods=['POST'])
+@rate_limit(f"{API_RATE_LIMIT_PER_HOUR} per hour")
+def complete_chore(chore_id: int, day_name: str):
+    """Mark a chore as complete for a specific day
+
+    Request Body:
+        completed: boolean (default: true)
+
+    Returns:
+        JSON success/error response
+    """
+    try:
+        logger.info(f"Chore completion request from {request.remote_addr}: {chore_id} on {day_name}")
+
+        if not sync_engine:
+            return jsonify({'error': 'Sync engine not available'}), 503
+
+        # Validate day name
+        valid_days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+        if day_name.lower() not in valid_days:
+            return jsonify({'error': 'Invalid day name'}), 400
+
+        chore_manager = ChoreManager(sync_engine.cache_manager)
+
+        # Parse request body
+        data = request.get_json() or {}
+        completed = data.get('completed', True)
+
+        if not isinstance(completed, bool):
+            return jsonify({'error': 'completed must be boolean'}), 400
+
+        # Update chore for specific day
+        success = chore_manager.cache_manager.update_chore_completion(
+            chore_id=chore_id,
+            day_name=day_name.lower(),
+            completed=completed,
+            week_start=chore_manager.get_current_week_start()
+        )
+
+        if success:
+            logger.info(f"Chore {chore_id} on {day_name} marked as {'complete' if completed else 'incomplete'}")
+            return jsonify({
+                'status': 'success',
+                'message': f'Chore marked as {"complete" if completed else "incomplete"}',
+                'chore_id': chore_id,
+                'day_name': day_name,
+                'completed': completed
+            })
+        else:
+            logger.warning(f"Failed to update chore: {chore_id} on {day_name}")
+            return jsonify({'error': 'Chore not found or update failed'}), 404
+
+    except Exception as e:
+        logger.error(f"Error completing chore: {e}", exc_info=True)
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@api_bp.route('/chores/sync', methods=['POST'])
+@rate_limit("10 per hour")
+def sync_chores():
+    """Trigger chore synchronization from CSV"""
+    try:
+        logger.info(f"Chore sync triggered by {request.remote_addr}")
+
+        if not sync_engine:
+            return jsonify({'error': 'Sync engine not available'}), 503
+
+        chore_manager = ChoreManager(sync_engine.cache_manager)
+
+        if chore_manager.sync_chores():
+            logger.info("Chore sync completed successfully")
+            return jsonify({
+                'status': 'success',
+                'message': 'Chores synced from CSV',
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            logger.warning("Chore sync failed")
+            return jsonify({
+                'status': 'error',
+                'message': 'Chore sync failed'
+            }), 500
+
+    except Exception as e:
+        logger.error(f"Error syncing chores: {e}", exc_info=True)
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+# Add after the sync_chores endpoint
+
+@api_bp.route('/chores/load', methods=['POST'])
+@rate_limit("10 per hour")
+def load_chores():
+    """Load/reload chores from CSV or create from JSON data
+
+    Request Body (optional):
+        chores: Array of chore objects with {child_name, task, days}
+        If no body provided, loads from CSV file
+
+    Returns:
+        JSON response with loaded chores
+    """
+    try:
+        logger.info(f"Chore load request from {request.remote_addr}")
+
+        if not sync_engine:
+            return jsonify({'error': 'Sync engine not available'}), 503
+
+        chore_manager = ChoreManager(sync_engine.cache_manager)
+
+        # Check if JSON data provided
+        data = request.get_json()
+
+        if data and 'chores' in data:
+            # Create chores from JSON data
+            from ..chore_chart.base import ChoreItem
+            import uuid
+
+            chores = []
+            current_week = chore_manager.get_current_week_start()
+
+            for chore_data in data['chores']:
+                try:
+                    child_name = chore_data.get('child_name', '').strip()
+                    task = chore_data.get('task', '').strip()
+                    days_input = chore_data.get('days', '')
+
+                    if not all([child_name, task, days_input]):
+                        continue
+
+                    # Handle days as string or array
+                    if isinstance(days_input, str):
+                        days = [day.strip().lower() for day in days_input.split('|')]
+                    else:
+                        days = [str(day).strip().lower() for day in days_input]
+
+                    # Validate days
+                    valid_days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+                    days = [day for day in days if day in valid_days]
+
+                    if not days:
+                        continue
+
+                    # Create unique ID
+                    chore_id = f"{child_name}_{task}_{str(uuid.uuid4())[:8]}".replace(' ', '_').lower()
+
+                    chore = ChoreItem(
+                        id=chore_id,
+                        child_name=child_name,
+                        task=task,
+                        days=days,
+                        week_start=current_week
+                    )
+
+                    chores.append(chore)
+
+                except Exception as e:
+                    logger.warning(f"Error parsing chore data: {e}")
+                    continue
+
+            if chores:
+                chore_manager.cache_manager.store_chores(chores)
+                logger.info(f"Created {len(chores)} chores from JSON data")
+
+        else:
+            # Load from CSV
+            if chore_manager.sync_chores():
+                logger.info("Chores loaded from CSV")
+            else:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Failed to load chores from CSV'
+                }), 500
+
+        # Get current chores to return
+        current_chores = chore_manager.cache_manager.get_chores(
+            week_start=chore_manager.get_current_week_start()
+        )
+
+        chores_data = []
+        for chore in current_chores:
+            chores_data.append({
+                'id': chore.id,
+                'child_name': chore.child_name,
+                'task': chore.task,
+                'days': chore.days,
+                'completed': chore.completed,
+                'week_start': chore.week_start
+            })
+
+        return jsonify({
+            'status': 'success',
+            'message': f'Loaded {len(chores_data)} chores',
+            'chores': chores_data,
+            'timestamp': datetime.now().isoformat()
+        })
+
+    except Exception as e:
+        logger.error(f"Error loading chores: {e}", exc_info=True)
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@api_bp.route('/chores/debug', methods=['GET'])
+@rate_limit(f"{API_RATE_LIMIT_PER_HOUR} per hour")
+def debug_chores():
+    """Debug endpoint to check CSV file and chore loading"""
+    try:
+        if not sync_engine:
+            return jsonify({'error': 'Sync engine not available'}), 503
+
+        chore_manager = ChoreManager(sync_engine.cache_manager)
+
+        debug_info = {
+            'csv_path': str(chore_manager.csv_path),
+            'csv_exists': chore_manager.csv_path.exists(),
+            'current_week': chore_manager.get_current_week_start()
+        }
+
+        # Try to read CSV
+        if chore_manager.csv_path.exists():
+            try:
+                with open(chore_manager.csv_path, 'r') as f:
+                    content = f.read()
+                debug_info['csv_content'] = content[:500]  # First 500 chars
+                debug_info['csv_lines'] = len(content.split('\n'))
+            except Exception as e:
+                debug_info['csv_read_error'] = str(e)
+
+        # Try to load chores
+        try:
+            chores = chore_manager.load_chores_from_csv()
+            debug_info['parsed_chores'] = len(chores)
+            debug_info['sample_chores'] = [
+                {
+                    'id': chore.id,
+                    'child_name': chore.child_name,
+                    'task': chore.task,
+                    'days': chore.days
+                } for chore in chores[:3]  # First 3 chores
+            ]
+        except Exception as e:
+            debug_info['parse_error'] = str(e)
+
+        # Check database
+        try:
+            db_chores = chore_manager.cache_manager.get_chores(
+                week_start=chore_manager.get_current_week_start()
+            )
+            debug_info['db_chores'] = len(db_chores)
+        except Exception as e:
+            debug_info['db_error'] = str(e)
+
+        return jsonify(debug_info)
+
+    except Exception as e:
+        logger.error(f"Error in chores debug: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+# ===============================
 # API INFORMATION ENDPOINT
 # ===============================
 
@@ -643,7 +988,7 @@ def bad_request(error):
 @api_bp.errorhandler(404)
 def not_found(error):
     """Handle 404 Not Found errors"""
-    logger.warning(f"404 Not Found: {request.path}")
+    logger.warning(f"404 Not Found: {request.path} : {error}")
     return jsonify({
         'error': 'Not found',
         'message': 'API endpoint not found',
@@ -654,7 +999,7 @@ def not_found(error):
 @api_bp.errorhandler(429)
 def ratelimit_error(error):
     """Handle rate limit errors"""
-    logger.warning(f"429 Rate Limit: {request.remote_addr} exceeded limit")
+    logger.warning(f"429 Rate Limit: {request.remote_addr} exceeded limit : {error}")
     return jsonify({
         'error': 'Too many requests',
         'message': 'Rate limit exceeded. Please try again later.',

@@ -4,6 +4,7 @@ import { AccountSetup } from './pages/AccountSetup';
 import { GoogleSetup } from './pages/GoogleSetup';
 import { AppleSetup } from './pages/AppleSetup';
 import { CalendarDisplay } from './pages/CalendarDisplay';
+import ChoreChartDisplay from "./pages/ChoreChartDisplay";
 
 const App: React.FC = () => {
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
@@ -22,6 +23,7 @@ const App: React.FC = () => {
   if (currentPath === '/setup') return <AccountSetup navigate={navigate} />;
   if (currentPath.startsWith('/setup/google')) return <GoogleSetup navigate={navigate} />;
   if (currentPath.startsWith('/setup/apple')) return <AppleSetup navigate={navigate} />;
+  if (currentPath.startsWith('/api/chores')) return <ChoreChartDisplay />;
   if (currentPath === '/display') return <CalendarDisplay />;
   return <Dashboard navigate={navigate} />;
 };

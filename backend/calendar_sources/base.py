@@ -7,7 +7,7 @@ All methods are synchronous (no async/await) since underlying APIs are blocking
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from dataclasses import dataclass, field
 import logging
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 import { EventCard } from '../components/EventCard';
+import { DarkModeToggle } from '../components/DarkModeToggle';
 import { CalendarEvent, ViewType } from '../types';
 
 export const CalendarDisplay: React.FC = () => {
@@ -118,7 +119,7 @@ export const CalendarDisplay: React.FC = () => {
           </div>
         </div>
         {dayEvents.length === 0 ? (
-          <div className="no-events">No events on this day</div>
+          <div className="no-events">No events scheduled for this day</div>
         ) : (
           dayEvents.map(event => <EventCard key={event.id} event={event} />)
         )}
@@ -148,19 +149,25 @@ export const CalendarDisplay: React.FC = () => {
             <div className="day-name">{dayNames[i]}</div>
             <div className={`day-number ${isToday ? 'today' : ''}`}>{date.getDate()}</div>
           </div>
-          {dayEvents.map(event => (
-            <div
-              key={event.id}
-              className="compact-event"
-              style={{ background: `linear-gradient(135deg, ${event.color} 0%, ${event.color}dd 100%)` }}
-              onClick={() => goToDate(date.getFullYear(), date.getMonth(), date.getDate())}
-            >
-              <div className="title">
-                {event.title.substring(0, 20)}{event.title.length > 20 ? '...' : ''}
-              </div>
-              {!event.all_day && <div className="time">{formatTime(event.start_time)}</div>}
+          {dayEvents.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '2rem 0.5rem', color: 'var(--neutral-400)', fontSize: '0.75rem' }}>
+              No events
             </div>
-          ))}
+          ) : (
+            dayEvents.map(event => (
+              <div
+                key={event.id}
+                className="compact-event"
+                style={{ background: event.color || '#667eea' }}
+                onClick={() => goToDate(date.getFullYear(), date.getMonth(), date.getDate())}
+              >
+                <div className="title">
+                  {event.title.substring(0, 20)}{event.title.length > 20 ? '...' : ''}
+                </div>
+                {!event.all_day && <div className="time">{formatTime(event.start_time)}</div>}
+              </div>
+            ))
+          )}
         </div>
       );
     }
@@ -208,8 +215,8 @@ export const CalendarDisplay: React.FC = () => {
           {dayEvents.slice(0, 3).map((event, idx) => (
             <div
               key={idx}
-              className={`month-event ${event.all_day ? 'all-day' : ''}`}
-              style={{ background: `linear-gradient(135deg, ${event.color} 0%, ${event.color}dd 100%)` }}
+              className="month-event"
+              style={{ background: event.color || '#667eea' }}
             >
               {event.title.length > 25 ? event.title.substring(0, 25) + '...' : event.title}
             </div>
@@ -240,25 +247,28 @@ export const CalendarDisplay: React.FC = () => {
     <div className="container">
       <div className="header">
         <h1>Calendar</h1>
-        <div className="view-controls">
-          <button
-            className={`view-btn ${currentView === 'day' ? 'active' : ''}`}
-            onClick={() => setCurrentView('day')}
-          >
-            Day
-          </button>
-          <button
-            className={`view-btn ${currentView === 'week' ? 'active' : ''}`}
-            onClick={() => setCurrentView('week')}
-          >
-            Week
-          </button>
-          <button
-            className={`view-btn ${currentView === 'month' ? 'active' : ''}`}
-            onClick={() => setCurrentView('month')}
-          >
-            Month
-          </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          <div className="view-controls">
+            <button
+              className={`view-btn ${currentView === 'day' ? 'active' : ''}`}
+              onClick={() => setCurrentView('day')}
+            >
+              Day
+            </button>
+            <button
+              className={`view-btn ${currentView === 'week' ? 'active' : ''}`}
+              onClick={() => setCurrentView('week')}
+            >
+              Week
+            </button>
+            <button
+              className={`view-btn ${currentView === 'month' ? 'active' : ''}`}
+              onClick={() => setCurrentView('month')}
+            >
+              Month
+            </button>
+          </div>
+          <DarkModeToggle />
         </div>
       </div>
 

@@ -12,4 +12,5 @@ module.exports = function(app) {
   app.use('/accounts', createProxyMiddleware(proxyOptions));
   app.use('/sync', createProxyMiddleware(proxyOptions));
   app.use('/status', createProxyMiddleware(proxyOptions));
+
 };

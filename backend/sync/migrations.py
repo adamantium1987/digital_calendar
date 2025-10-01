@@ -54,6 +54,11 @@ class MigrationManager:
             up=self._migration_1_up
         ))
 
+        self.migrations.append(Migration(
+            version=2,
+            description="Add chore tables",
+            up=self._migration_2_up
+        ))
         # Future migrations go here
         # self.migrations.append(Migration(
         #     version=2,
@@ -216,3 +221,46 @@ class MigrationManager:
             """)
 
             conn.commit()
+
+    def _migration_2_up(self):
+        """Add chore tables"""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("PRAGMA foreign_keys = ON")
+
+            # Drop existing chores table if it exists
+            conn.execute("DROP TABLE IF EXISTS chores")
+
+            # Chores table - one row per chore per day
+            conn.execute("""
+                CREATE TABLE chores (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chore_id INTEGER NOT NULL,
+                    child_name TEXT NOT NULL,
+                    task TEXT NOT NULL,
+                    day_name TEXT NOT NULL,
+                    week_start TEXT NOT NULL,
+                    completed BOOLEAN NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(chore_id, day_name, week_start)
+                )
+            """)
+
+            # Indexes for chores
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_chores_child_week 
+                ON chores(child_name, week_start)
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_chores_day_week 
+                ON chores(day_name, week_start)
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_chores_chore_day_week 
+                ON chores(chore_id, day_name, week_start)
+            """)
+
+            conn.commit()
+
+        # Update _register_migrations method - add after migration 1:
+

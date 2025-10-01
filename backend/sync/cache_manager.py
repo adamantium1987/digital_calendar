@@ -15,6 +15,7 @@ from pathlib import Path
 from contextlib import contextmanager
 
 from ..calendar_sources.base import CalendarEvent
+from ..chore_chart.base import ChoreItem
 from ..config.settings import config
 from ..config.constants import (
     CACHE_EXPIRY_DAYS,
@@ -82,7 +83,7 @@ class CacheManager:
     def _init_database(self):
         """Initialize SQLite database with migrations"""
         try:
-            # Run migrations to ensure schema is up to date
+            # Run migrations to ensure schema is up-to-date
             migration_manager = MigrationManager(self.db_path)
             if migration_manager.migrate():
                 logger.info("Database schema up to date")
@@ -491,6 +492,234 @@ class CacheManager:
                     'events_by_account': {},
                     'date_range': {'earliest': None, 'latest': None}
                 }
+
+    # Add after get_cache_stats method
+
+    def store_chores(self, chores):
+        """
+        Store chores in cache - creates one row per chore per day
+
+        Args:
+            chores: List of ChoreItem objects
+        """
+        if not chores:
+            return
+
+        with self._lock:
+            try:
+                with self._get_connection() as conn:
+                    now = datetime.now(timezone.utc).isoformat()
+                    week_start = chores[0].week_start
+
+                    # Clear existing chores for this week
+                    conn.execute(
+                        "DELETE FROM chores WHERE week_start = ?",
+                        (week_start,)
+                    )
+
+                    # Get next chore_id
+                    cursor = conn.execute("SELECT COALESCE(MAX(chore_id), 0) + 1 FROM chores")
+                    next_chore_id = cursor.fetchone()[0]
+
+                    # Prepare batch insert data - one row per chore per day
+                    chore_data = []
+                    current_chore_id = next_chore_id
+
+                    for chore in chores:
+                        for day in chore.days:
+                            chore_data.append((
+                                current_chore_id,
+                                chore.child_name,
+                                chore.task,
+                                day,  # Individual day
+                                chore.week_start,
+                                chore.completed,
+                                now,
+                                now
+                            ))
+                        current_chore_id += 1
+
+                    # Batch insert all chore-day combinations
+                    conn.executemany("""
+                        INSERT INTO chores 
+                        (chore_id, child_name, task, day_name, week_start, completed, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, chore_data)
+
+                    conn.commit()
+                    logger.info(f"Stored {len(chore_data)} chore-day records for week {week_start}")
+
+            except Exception as e:
+                logger.error(f"Error storing chores: {e}", exc_info=True)
+                raise
+
+    def get_chores(self, day_name: str = None, child_name: str = None, week_start: str = None):
+        """
+        Get chores with optional filtering
+
+        Args:
+            day_name: Filter by day
+            child_name: Filter by child
+            week_start: Filter by week
+
+        Returns:
+            List of ChoreItem objects (grouped by chore_id with days array)
+        """
+        with self._lock:
+            try:
+                with self._get_connection() as conn:
+                    query = "SELECT * FROM chores WHERE 1=1"
+                    params = []
+
+                    if week_start:
+                        query += " AND week_start = ?"
+                        params.append(week_start)
+
+                    if child_name:
+                        query += " AND child_name = ?"
+                        params.append(child_name)
+
+                    if day_name:
+                        query += " AND day_name = ?"
+                        params.append(day_name)
+
+                    query += " ORDER BY chore_id, day_name"
+
+                    cursor = conn.execute(query, params)
+                    rows = cursor.fetchall()
+
+                    # Group by chore_id to rebuild ChoreItem objects
+                    from ..chore_chart.base import ChoreItem
+                    chore_groups = {}
+
+                    for row in rows:
+                        try:
+                            chore_id = row['chore_id']
+
+                            if chore_id not in chore_groups:
+                                chore_groups[chore_id] = {
+                                    'id': str(chore_id),  # Convert to string for ChoreItem
+                                    'child_name': row['child_name'],
+                                    'task': row['task'],
+                                    'week_start': row['week_start'],
+                                    'days': [],
+                                    'completed_days': []
+                                }
+
+                            chore_groups[chore_id]['days'].append(row['day_name'])
+                            if row['completed']:
+                                chore_groups[chore_id]['completed_days'].append(row['day_name'])
+
+                        except Exception as e:
+                            logger.warning(f"Error parsing chore row {row['id'] if 'id' in row else 'unknown'}: {e}")
+                            continue
+
+                    # Convert to ChoreItem objects
+                    chores = []
+                    for chore_data in chore_groups.values():
+                        # Overall completed if ALL days are completed
+                        all_completed = len(chore_data['completed_days']) == len(chore_data['days'])
+
+                        chore = ChoreItem(
+                            id=chore_data['id'],
+                            child_name=chore_data['child_name'],
+                            task=chore_data['task'],
+                            days=chore_data['days'],
+                            completed=all_completed,
+                            week_start=chore_data['week_start']
+                        )
+                        chores.append(chore)
+
+                    return chores
+
+            except Exception as e:
+                logger.error(f"Error getting chores: {e}", exc_info=True)
+                return []
+
+    def get_chore_days(self, day_name: str = None, child_name: str = None, week_start: str = None):
+        """
+        Get individual chore-day records (not grouped)
+
+        Returns:
+            List of dicts with chore_id, child_name, task, day_name, completed
+        """
+        with self._lock:
+            try:
+                with self._get_connection() as conn:
+                    query = "SELECT * FROM chores WHERE 1=1"
+                    params = []
+
+                    if week_start:
+                        query += " AND week_start = ?"
+                        params.append(week_start)
+
+                    if child_name:
+                        query += " AND child_name = ?"
+                        params.append(child_name)
+
+                    if day_name:
+                        query += " AND day_name = ?"
+                        params.append(day_name)
+
+                    query += " ORDER BY child_name, task, day_name"
+
+                    cursor = conn.execute(query, params)
+                    rows = cursor.fetchall()
+
+                    results = []
+                    for row in rows:
+                        results.append({
+                            'chore_id': row['chore_id'],
+                            'child_name': row['child_name'],
+                            'task': row['task'],
+                            'day_name': row['day_name'],
+                            'completed': bool(row['completed']),
+                            'week_start': row['week_start']
+                        })
+
+                    return results
+
+            except Exception in e:
+                logger.error(f"Error getting chore days: {e}", exc_info=True)
+                return []
+
+    def update_chore_completion(self, chore_id: str, day_name: str, completed: bool, week_start: str) -> bool:
+        """
+        Update chore completion status for a specific day
+
+        Args:
+            chore_id: Chore identifier
+            day_name: Specific day to update
+            completed: Completion status
+            week_start: Week identifier
+
+        Returns:
+            True if successful
+        """
+        with self._lock:
+            try:
+                with self._get_connection() as conn:
+                    now = datetime.now(timezone.utc).isoformat()
+
+                    cursor = conn.execute("""
+                        UPDATE chores 
+                        SET completed = ?, updated_at = ?
+                        WHERE chore_id = ? AND day_name = ? AND week_start = ?
+                    """, (completed, now, chore_id, day_name, week_start))
+
+                    success = cursor.rowcount > 0
+                    conn.commit()
+
+                    if success:
+                        logger.debug(f"Updated chore {chore_id} for {day_name} completion: {completed}")
+                    else:
+                        logger.warning(f"No chore found to update: {chore_id} on {day_name}")
+
+                    return success
+
+            except Exception as e:
+                logger.error(f"Error updating chore completion: {e}", exc_info=True)
+                return False
 
     def close(self):
         """Close all database connections"""

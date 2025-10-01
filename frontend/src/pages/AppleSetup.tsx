@@ -42,21 +42,21 @@ export const AppleSetup: React.FC<AppleSetupProps> = ({ navigate }) => {
       <Header navigate={navigate} />
 
       <div className="card">
-        <h1>🍎 Apple iCloud Setup</h1>
+        <h2>Apple iCloud Setup</h2>
 
         {error && (
           <div className="error">{error}</div>
         )}
 
         <div className="instructions">
-          <h3>📋 Setup Instructions</h3>
+          <h3>Setup Instructions</h3>
           <p><strong>You'll need an App-Specific Password:</strong></p>
           <ol>
-            <li>Go to Apple ID website</li>
+            <li>Go to <a href="https://appleid.apple.com" target="_blank" rel="noopener noreferrer">Apple ID website</a></li>
             <li>Sign in with your Apple ID</li>
             <li>Go to Security section</li>
             <li>Click Generate Password under App-Specific Passwords</li>
-            <li>Enter a label like Pi Calendar</li>
+            <li>Enter a label like "Pi Calendar"</li>
             <li>Save the generated password for authentication</li>
           </ol>
           <p><strong>Note:</strong> Two-factor authentication must be enabled.</p>
@@ -64,7 +64,7 @@ export const AppleSetup: React.FC<AppleSetupProps> = ({ navigate }) => {
 
         <form onSubmit={handleSubmit} className="form">
           <div className="form-group">
-            <label htmlFor="display_name">Display Name:</label>
+            <label htmlFor="display_name">Display Name</label>
             <input
               type="text"
               id="display_name"
@@ -76,7 +76,7 @@ export const AppleSetup: React.FC<AppleSetupProps> = ({ navigate }) => {
           </div>
 
           <div className="form-group">
-            <label htmlFor="username">iCloud Email:</label>
+            <label htmlFor="username">iCloud Email</label>
             <input
               type="email"
               id="username"
@@ -92,7 +92,9 @@ export const AppleSetup: React.FC<AppleSetupProps> = ({ navigate }) => {
           </button>
         </form>
 
-        <p><small>The App-Specific Password will be requested during authentication.</small></p>
+        <p style={{ fontSize: '0.875rem', color: 'var(--neutral-600)', marginTop: '1rem' }}>
+          The App-Specific Password will be requested during authentication.
+        </p>
         <p>
           <button onClick={() => navigate('/setup')} className="btn-link">
             ← Back to Account Setup

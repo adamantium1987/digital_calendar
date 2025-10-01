@@ -13,6 +13,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
+from .chore_manager import ChoreManager
 from ..calendar_sources.google_cal import GoogleCalendarSource
 from ..calendar_sources.apple_cal import AppleCalendarSource
 from ..calendar_sources.base import CalendarEvent, BaseCalendarSource
@@ -35,6 +36,8 @@ class SyncEngine:
     def __init__(self) -> None:
         """Initialize sync engine with proper components"""
         self.cache_manager: CacheManager = CacheManager()
+        self.chore_manager: ChoreManager = ChoreManager(self.cache_manager)
+        # self.calendar_manager: CalendarManager = CalendarManager(self.cache_manager)
         self.scheduler: BackgroundScheduler = BackgroundScheduler()
         self.sources: Dict[str, BaseCalendarSource] = {}
         self.is_running: bool = False
@@ -65,6 +68,15 @@ class SyncEngine:
         # Initialize calendar sources
         self._initialize_sources()
 
+        # Force database migration check for chores
+        try:
+            from .migrations import MigrationManager
+            migration_manager = MigrationManager(self.cache_manager.db_path)
+            migration_manager.migrate()
+            logger.info("Database migrations completed")
+        except Exception as e:
+            logger.error(f"Migration error: {e}", exc_info=True)
+
         # Start background scheduler for sync
         sync_interval = config.get('sync.interval_minutes', DEFAULT_SYNC_INTERVAL_MINUTES)
         self.scheduler.add_job(
@@ -81,6 +93,18 @@ class SyncEngine:
             trigger=IntervalTrigger(hours=CACHE_CLEANUP_INTERVAL_HOURS),
             id='cache_cleanup',
             name='Cache Cleanup',
+            replace_existing=True
+        )
+
+        # Add chore sync job
+        self.scheduler.add_job(
+            func=self._scheduled_chore_sync,
+            trigger='cron',
+            day_of_week='sun',
+            hour=0,
+            minute=0,
+            id='chore_sync',
+            name='Weekly Chore Sync',
             replace_existing=True
         )
 
@@ -195,6 +219,11 @@ class SyncEngine:
             time.sleep(STARTUP_DELAY_SECONDS)  # Give server time to fully start
             logger.info("Starting initial sync...")
             self.sync_all()
+
+            # Also sync chores on startup
+            logger.info("Starting initial chore sync...")
+            self.chore_manager.sync_chores()
+
         except Exception as e:
             logger.error(f"Initial sync error: {e}", exc_info=True)
 
@@ -219,6 +248,14 @@ class SyncEngine:
             self.cache_manager.cleanup_old_events()
         except Exception as e:
             logger.error(f"Scheduled cleanup error: {e}", exc_info=True)
+
+    def _scheduled_chore_sync(self) -> None:
+        """Scheduled chore sync job"""
+        try:
+            logger.debug("Running scheduled chore sync")
+            self.chore_manager.sync_chores()
+        except Exception as e:
+            logger.error(f"Scheduled chore sync error: {e}", exc_info=True)
 
     def sync_all(self) -> bool:
         """

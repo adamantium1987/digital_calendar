@@ -43,17 +43,17 @@ export const GoogleSetup: React.FC<GoogleSetupProps> = ({ navigate }) => {
       <Header navigate={navigate} />
 
       <div className="card">
-        <h1>🔧 Google Calendar Setup</h1>
+        <h2>Google Calendar Setup</h2>
 
         {error && (
           <div className="error">{error}</div>
         )}
 
         <div className="instructions">
-          <h3>📋 Setup Instructions</h3>
+          <h3>Setup Instructions</h3>
           <ol>
-            <li>Go to Google Cloud Console</li>
-            <li>Create a new project or select existing project</li>
+            <li>Go to <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer">Google Cloud Console</a></li>
+            <li>Create a new project or select an existing project</li>
             <li>Enable the Google Calendar API</li>
             <li>Create OAuth 2.0 Client ID credentials</li>
             <li>Add redirect URI: <code>http://localhost:5000/callback</code></li>
@@ -63,7 +63,7 @@ export const GoogleSetup: React.FC<GoogleSetupProps> = ({ navigate }) => {
 
         <form onSubmit={handleSubmit} className="form">
           <div className="form-group">
-            <label htmlFor="display_name">Display Name:</label>
+            <label htmlFor="display_name">Display Name</label>
             <input
               type="text"
               id="display_name"
@@ -75,7 +75,7 @@ export const GoogleSetup: React.FC<GoogleSetupProps> = ({ navigate }) => {
           </div>
 
           <div className="form-group">
-            <label htmlFor="client_id">Google Client ID:</label>
+            <label htmlFor="client_id">Google Client ID</label>
             <input
               type="text"
               id="client_id"
@@ -87,7 +87,7 @@ export const GoogleSetup: React.FC<GoogleSetupProps> = ({ navigate }) => {
           </div>
 
           <div className="form-group">
-            <label htmlFor="client_secret">Google Client Secret:</label>
+            <label htmlFor="client_secret">Google Client Secret</label>
             <input
               type="password"
               id="client_secret"
