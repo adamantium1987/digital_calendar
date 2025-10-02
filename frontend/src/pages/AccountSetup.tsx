@@ -208,13 +208,16 @@ export const AccountSetup: React.FC<AccountSetupProps> = ({ navigate }) => {
 
               <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                 {!account.authenticated && (
-                  <a href={`/setup/apple/${account.id}/authenticate`} className="btn btn-warning">
-                    Enter App-Specific Password
-                  </a>
+                    <button
+                        onClick={() => navigate(`/setup/apple?id=${account.id}&step=authenticate`)}
+                        className="btn btn-warning"
+                    >
+                      Enter App-Specific Password
+                    </button>
                 )}
                 <button
-                  onClick={() => handleRemoveAccount(account.id, account.display_name)}
-                  className="btn btn-danger"
+                    onClick={() => handleRemoveAccount(account.id, account.display_name)}
+                    className="btn btn-danger"
                 >
                   Remove Account
                 </button>

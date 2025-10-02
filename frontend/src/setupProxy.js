@@ -7,10 +7,14 @@ module.exports = function(app) {
   };
 
   app.use('/api', createProxyMiddleware(proxyOptions));
-  app.use('/setup', createProxyMiddleware(proxyOptions));
   app.use('/oauth', createProxyMiddleware(proxyOptions));
   app.use('/accounts', createProxyMiddleware(proxyOptions));
   app.use('/sync', createProxyMiddleware(proxyOptions));
   app.use('/status', createProxyMiddleware(proxyOptions));
 
+    // Make sure /setup catches ALL setup routes including nested ones
+  app.use('/setup', createProxyMiddleware({
+    ...proxyOptions,
+    context: ['/setup/**'], // This should catch all nested paths
+  }));
 };

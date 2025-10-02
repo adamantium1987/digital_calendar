@@ -107,7 +107,7 @@ class CacheManager:
             logger.debug(f"No events to store for {account_id}/{calendar_id}")
             return
 
-        with self._lock:
+        with (self._lock):
             retry_count = 0
             while retry_count < DB_MAX_RETRIES:
                 try:
@@ -127,15 +127,27 @@ class CacheManager:
                             attendees_json = json.dumps(event.attendees or [])
 
                             # Ensure datetime objects are properly converted
-                            start_time = event.start_time.isoformat() if hasattr(
-                                event.start_time, 'isoformat'
-                            ) else str(event.start_time)
-                            end_time = event.end_time.isoformat() if hasattr(
-                                event.end_time, 'isoformat'
-                            ) else str(event.end_time)
+                            if hasattr(event.start_time, 'astimezone'):
+                                start_time = event.start_time.astimezone(timezone.utc).isoformat()
+                            else:
+                                start_time = str(event.start_time)
+
+                            if hasattr(event.end_time, 'astimezone'):
+                                end_time = event.end_time.astimezone(timezone.utc).isoformat()
+                            else:
+                                end_time = str(event.end_time)
+
+                            # Create unique ID for each event instance (handles recurring events)
+                            # Create unique ID for each event instance (handles recurring events)
+                            import hashlib
+                            unique_id = hashlib.md5(f"{event.id}_{start_time}".encode()).hexdigest()
+
+                            # Add this debug line:
+                            logger.info(
+                                f"Generated unique_id for {event.title}: original='{event.id}' -> unique='{unique_id}'")
 
                             event_data.append((
-                                event.id,
+                                unique_id,  # Use unique ID instead of event.id
                                 account_id,
                                 calendar_id,
                                 event.title,
@@ -150,6 +162,21 @@ class CacheManager:
                                 now
                             ))
 
+                        # Debug logging for unique IDs
+                        unique_ids = [item[0] for item in event_data]
+                        duplicate_ids = [id for id in set(unique_ids) if unique_ids.count(id) > 1]
+
+                        logger.info(f"Generated {len(unique_ids)} unique IDs")
+                        if duplicate_ids:
+                            logger.error(f"DUPLICATE IDs FOUND: {duplicate_ids}")
+                            for dup_id in duplicate_ids:
+                                matching_events = [item for item in event_data if item[0] == dup_id]
+                                logger.error(f"Duplicate ID {dup_id} has {len(matching_events)} events:")
+                                for event_item in matching_events:
+                                    logger.error(f"  - {event_item[3]} at {event_item[5]}")  # title and start_time
+                        else:
+                            logger.info("No duplicate IDs found - all unique")
+
                         # Batch insert all events
                         conn.executemany("""
                             INSERT OR REPLACE INTO events 
@@ -157,6 +184,14 @@ class CacheManager:
                              all_day, location, color, attendees, created_at, updated_at)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, event_data)
+
+                        logger.info(f"Batch insert completed. Prepared {len(event_data)} events for insertion")
+
+                        # Check how many were actually inserted
+                        cursor = conn.execute("SELECT COUNT(*) FROM events WHERE account_id = ? AND calendar_id = ?",
+                                              (account_id, calendar_id))
+                        actual_count = cursor.fetchone()[0]
+                        logger.info(f"Actual events in database after insert: {actual_count}")
 
                         # Update sync status
                         conn.execute("""
@@ -241,18 +276,10 @@ class CacheManager:
 
     def get_events(self, start_date: datetime = None, end_date: datetime = None,
                    account_ids: List[str] = None, calendar_ids: List[str] = None) -> List[CalendarEvent]:
-        """
-        Retrieve events from cache with optional filtering
+        """Retrieve events from cache with optional filtering"""
 
-        Args:
-            start_date: Filter events starting after this date
-            end_date: Filter events ending before this date
-            account_ids: Filter by specific account IDs
-            calendar_ids: Filter by specific calendar IDs
+        logger.info(f"Cache manager get_events called with start_date: {start_date}, end_date: {end_date}")
 
-        Returns:
-            List of calendar events
-        """
         with self._lock:
             try:
                 with self._get_connection() as conn:
@@ -263,17 +290,15 @@ class CacheManager:
                     # Date range filtering
                     if start_date:
                         query += " AND end_time >= ?"
-                        start_iso = start_date.isoformat() if hasattr(
-                            start_date, 'isoformat'
-                        ) else str(start_date)
+                        start_iso = start_date.isoformat()
                         params.append(start_iso)
+                        logger.info(f"Added start_date filter: end_time >= {start_iso}")
 
                     if end_date:
                         query += " AND start_time <= ?"
-                        end_iso = end_date.isoformat() if hasattr(
-                            end_date, 'isoformat'
-                        ) else str(end_date)
+                        end_iso = end_date.isoformat()
                         params.append(end_iso)
+                        logger.info(f"Added end_date filter: start_time <= {end_iso}")
 
                     # Account filtering
                     if account_ids:
@@ -290,8 +315,12 @@ class CacheManager:
                     # Order by start time
                     query += " ORDER BY start_time ASC"
 
+                    logger.info(f"Final SQL query: {query}")
+
                     cursor = conn.execute(query, params)
                     rows = cursor.fetchall()
+
+                    logger.info(f"SQL query returned {len(rows)} rows")
 
                     # Convert to CalendarEvent objects
                     events = []
@@ -302,6 +331,7 @@ class CacheManager:
 
                             # Parse datetime strings with error handling
                             try:
+                                # The values from database are already ISO strings, just parse them back to datetime
                                 start_time = datetime.fromisoformat(
                                     row['start_time'].replace('Z', '+00:00')
                                 )
@@ -313,7 +343,7 @@ class CacheManager:
                                 logger.warning(f"Malformed datetime in event {row['id']}, skipping")
                                 continue
 
-                            event = CalendarEvent(
+                            cal_event = CalendarEvent(
                                 id=row['id'],
                                 title=row['title'],
                                 description=row['description'],
@@ -327,10 +357,10 @@ class CacheManager:
                                 attendees=attendees
                             )
 
-                            events.append(event)
+                            events.append(cal_event)
 
                         except Exception as e:
-                            logger.warning(f"Error parsing event {row.get('id', 'unknown')}: {e}")
+                            logger.warning(f"Error parsing event {row['id'] if 'id' in row.keys() else 'unknown'}: {e}")
                             continue
 
                     logger.debug(f"Retrieved {len(events)} events from cache")

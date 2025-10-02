@@ -25,10 +25,27 @@ export const CalendarDisplay: React.FC = () => {
 
       const params = new URLSearchParams({
         start_date: startDate.toISOString(),
-        end_date: endDate.toISOString()
+        end_date: endDate.toISOString(),
+        view: currentView  // Add this line
       });
 
+      console.log('Loading events with params:', params.toString()); // Add this debug
       const response = await api.get<any>(`/events?${params}`);
+
+      console.log('API response:', response);
+      console.log('Events array:', response.events);
+      console.log('Number of events:', response.events.length);
+      console.log('Sample event:', response.events[0]);
+
+      console.log('All events being processed:', events);
+      events.forEach((event, index) => {
+        console.log(`Event ${index}:`, {
+          title: event.title,
+          start: event.start_time,
+          date: new Date(event.start_time)
+        });
+      });
+
       setEvents(response.events || []);
       setLoading(false);
     } catch (error) {
@@ -185,60 +202,62 @@ export const CalendarDisplay: React.FC = () => {
   };
 
   const renderMonthView = () => {
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    const startingDayOfWeek = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
-    const today = new Date();
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const startingDayOfWeek = firstDay.getDay(); // Remove the adjustment - use raw getDay()
+  const today = new Date();
 
-    const cells = [];
-    const dayHeaders = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const cells = [];
+  const dayHeaders = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']; // Sunday first
 
-    dayHeaders.forEach(day => {
-      cells.push(<div key={`header-${day}`} className="weekday-header">{day}</div>);
-    });
+  dayHeaders.forEach(day => {
+    cells.push(<div key={`header-${day}`} className="weekday-header">{day}</div>);
+  });
 
-    for (let i = 0; i < startingDayOfWeek; i++) {
-      cells.push(<div key={`empty-${i}`} className="month-cell"></div>);
-    }
+  // Add empty cells for days before the first day of the month
+  for (let i = 0; i < startingDayOfWeek; i++) {
+    cells.push(<div key={`empty-${i}`} className="month-cell"></div>);
+  }
 
-    for (let day = 1; day <= lastDay.getDate(); day++) {
-      const cellDate = new Date(year, month, day);
-      const isToday = isSameDay(cellDate, today);
-      const dayEvents = getEventsForDate(cellDate);
+  // Add cells for each day of the month
+  for (let day = 1; day <= lastDay.getDate(); day++) {
+    const cellDate = new Date(year, month, day);
+    const isToday = isSameDay(cellDate, today);
+    const dayEvents = getEventsForDate(cellDate);
 
-      cells.push(
-        <div
-          key={day}
-          className={`month-cell ${isToday ? 'today' : ''}`}
-          onClick={() => goToDate(year, month, day)}
-        >
-          <div className="month-date">
-            <span className={`date-number ${isToday ? 'today' : ''}`}>{day}</span>
-          </div>
-          {dayEvents.slice(0, 3).map((event, idx) => (
-            <div
-              key={idx}
-              className="month-event"
-              style={{ background: event.color || 'var(--primary-500)' }}
-            >
-              {event.title.length > 25 ? event.title.substring(0, 25) + '...' : event.title}
-            </div>
-          ))}
-          {dayEvents.length > 3 && (
-            <div className="more-events">+{dayEvents.length - 3} more</div>
-          )}
+    cells.push(
+      <div
+        key={day}
+        className={`month-cell ${isToday ? 'today' : ''}`}
+        onClick={() => goToDate(year, month, day)}
+      >
+        <div className="month-date">
+          <span className={`date-number ${isToday ? 'today' : ''}`}>{day}</span>
         </div>
-      );
-    }
-
-    return (
-      <div className="month-view">
-        <div className="month-grid">{cells}</div>
+        {dayEvents.slice(0, 3).map((event, idx) => (
+          <div
+            key={idx}
+            className="month-event"
+            style={{ background: event.color || 'var(--primary-500)' }}
+          >
+            {event.title.length > 25 ? event.title.substring(0, 25) + '...' : event.title}
+          </div>
+        ))}
+        {dayEvents.length > 3 && (
+          <div className="more-events">+{dayEvents.length - 3} more</div>
+        )}
       </div>
     );
-  };
+  }
+
+  return (
+    <div className="month-view">
+      <div className="month-grid">{cells}</div>
+    </div>
+  );
+};
 
   if (loading) {
     return (

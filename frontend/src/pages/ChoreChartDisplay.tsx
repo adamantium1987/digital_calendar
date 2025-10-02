@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import {Header} from "../components/Header";
+import {Toast} from "../components/Toast";
 
 const DAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'] as const;
 type DayName = (typeof DAYS)[number];
@@ -13,24 +15,26 @@ interface ChoreDayRecord {
   week_start: string;
 }
 
-type Toast = { type: 'success' | 'error' | 'info'; message: string } | null;
-
 // Dynamic member colors - will be populated based on actual data
 const MEMBER_COLORS = {
-  'Dad': { bg: 'rgba(34, 197, 94, 0.1)', border: 'rgb(34, 197, 94)', text: 'rgb(22, 163, 74)' },
-  'Ella': { bg: 'rgba(251, 113, 133, 0.1)', border: 'rgb(251, 113, 133)', text: 'rgb(225, 29, 72)' },
-  'Harper': { bg: 'rgba(147, 51, 234, 0.1)', border: 'rgb(147, 51, 234)', text: 'rgb(126, 34, 206)' },
-  'Mom': { bg: 'rgba(239, 68, 68, 0.1)', border: 'rgb(239, 68, 68)', text: 'rgb(220, 38, 38)' },
+  'Rachel/Adam': { bg: 'rgba(34, 197, 94, 0.1)', border: 'rgb(34, 197, 94)', text: 'rgb(22, 163, 74)' },
+  'Mason': { bg: 'rgba(251, 113, 133, 0.1)', border: 'rgb(251, 113, 133)', text: 'rgb(225, 29, 72)' },
+  'Makenzie': { bg: 'rgba(147, 51, 234, 0.1)', border: 'rgb(147, 51, 234)', text: 'rgb(126, 34, 206)' }
+  // 'Mom': { bg: 'rgba(239, 68, 68, 0.1)', border: 'rgb(239, 68, 68)', text: 'rgb(220, 38, 38)' },
 } as const;
 
-export default function ChoreChartDisplay(): JSX.Element {
+interface ChoreChartDisplayProps {
+  navigate: (path: string) => void;
+}
+
+export const ChoreChartDisplay: React.FC<ChoreChartDisplayProps> = ({ navigate }) => {
   const [choreDays, setChoreDays] = useState<ChoreDayRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [loadModalOpen, setLoadModalOpen] = useState(false);
   const [loadPayload, setLoadPayload] = useState('');
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
-  const [toast, setToast] = useState<Toast>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [uploadingCsv, setUploadingCsv] = useState(false);
 
   // Get current day name and week start for the selected date
@@ -92,12 +96,6 @@ export default function ChoreChartDisplay(): JSX.Element {
 
     return () => clearTimeout(timer);
   }, []);
-
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3500);
-    return () => clearTimeout(t);
-  }, [toast]);
 
   function getIsoWeekStart(d: Date): string {
     const copy = new Date(d);
@@ -232,283 +230,130 @@ export default function ChoreChartDisplay(): JSX.Element {
   const totalChores = Object.values(groupedChores).flat().length;
   const completedChores = Object.values(groupedChores).flat().filter(c => c.completed).length;
 
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <div className="loading">Loading chores for {currentDayName}...</div>
+      </div>
+    );
+  }
+
   return (
-    <div style={{
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-      backgroundColor: '#f8fafc',
-      minHeight: '100vh',
-      padding: '16px'
-    }}>
-      {/* Header */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: '24px',
-        backgroundColor: 'white',
-        padding: '16px 24px',
-        borderRadius: '12px',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button
-              onClick={prevDay}
-              style={{
-                background: 'none',
-                border: 'none',
-                fontSize: '18px',
-                cursor: 'pointer',
-                padding: '4px 8px',
-                borderRadius: '6px',
-                color: '#64748b'
-              }}
-            >
+    <div className="container">
+      {/*<Header navigate={navigate} title="Chore Chart" />*/}
+
+      {/* Date Navigation */}
+      <div className="card card-compact">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button onClick={prevDay} className="btn btn-secondary btn-sm">
               ←
             </button>
             <div>
-              <div style={{
-                fontSize: '18px',
-                fontWeight: '600',
-                color: '#1e293b',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}>
-                {formatDate(currentDate)}
+              <div className="flex items-center gap-2">
+                <h3 className="mb-0">{formatDate(currentDate)} Chores </h3>
                 {isToday(currentDate) && (
-                  <span style={{
-                    fontSize: '12px',
-                    backgroundColor: '#3b82f6',
-                    color: 'white',
-                    padding: '2px 6px',
-                    borderRadius: '4px',
-                    fontWeight: '500'
-                  }}>
-                    TODAY
-                  </span>
+                    <span className="status status-success">TODAY</span>
                 )}
               </div>
-              <div style={{ fontSize: '14px', color: '#64748b' }}>
+              <p className="text-sm mb-0">
                 {formatTime()} • {completedChores} of {totalChores} chores completed
-              </div>
+              </p>
             </div>
-            <button
-              onClick={nextDay}
-              style={{
-                background: 'none',
-                border: 'none',
-                fontSize: '18px',
-                cursor: 'pointer',
-                padding: '4px 8px',
-                borderRadius: '6px',
-                color: '#64748b'
-              }}
-            >
+            <button onClick={nextDay} className="btn btn-secondary btn-sm">
               →
             </button>
           </div>
 
-          {!isToday(currentDate) && (
-            <button
-              onClick={goToToday}
-              style={{
-                padding: '6px 12px',
-                backgroundColor: '#f1f5f9',
-                color: '#475569',
-                border: 'none',
-                borderRadius: '6px',
-                fontSize: '12px',
-                fontWeight: '500',
-                cursor: 'pointer'
-              }}
-            >
-              Go to Today
-            </button>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button
-            onClick={() => void handleSync()}
-            disabled={syncing}
-            style={{
-              padding: '8px 16px',
-              backgroundColor: '#3b82f6',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              fontSize: '14px',
-              fontWeight: '500',
-              cursor: syncing ? 'not-allowed' : 'pointer',
-              opacity: syncing ? 0.6 : 1
-            }}
-          >
-            {syncing ? 'Syncing...' : 'Sync CSV'}
-          </button>
-          <button
-            onClick={openLoadModal}
-            style={{
-              padding: '8px 16px',
-              backgroundColor: '#6b7280',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              fontSize: '14px',
-              fontWeight: '500',
-              cursor: 'pointer'
-            }}
-          >
-            Load Chores
-          </button>
-        </div>
-      </div>
-
-      {/* Day Summary */}
-      {totalChores > 0 && (
-        <div style={{
-          backgroundColor: 'white',
-          borderRadius: '12px',
-          padding: '16px 24px',
-          marginBottom: '20px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between'
-        }}>
-          <div>
-            <div style={{ fontSize: '16px', fontWeight: '600', color: '#1e293b' }}>
-              {currentDayName.charAt(0).toUpperCase() + currentDayName.slice(1)} Chores
-            </div>
-            <div style={{ fontSize: '14px', color: '#64748b' }}>
-              {Object.keys(groupedChores).length} family members with chores today
-            </div>
-          </div>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px'
-          }}>
+          <div className="flex items-center gap-3">
             <div style={{
               width: '100px',
               height: '8px',
-              backgroundColor: '#e2e8f0',
-              borderRadius: '4px',
+              backgroundColor: 'var(--border-color)',
+              borderRadius: 'var(--radius-sm)',
               overflow: 'hidden'
             }}>
               <div style={{
                 width: `${totalChores > 0 ? (completedChores / totalChores) * 100 : 0}%`,
                 height: '100%',
-                backgroundColor: '#3b82f6',
-                transition: 'width 0.3s ease'
-              }} />
+                backgroundColor: 'var(--primary-500)',
+                transition: 'width var(--transition)'
+              }}/>
             </div>
-            <div style={{
-              fontSize: '14px',
+            <div className="text-sm" style={{
               fontWeight: '600',
-              color: completedChores === totalChores ? '#059669' : '#64748b'
+              color: completedChores === totalChores ? 'var(--success-600)' : 'var(--text-secondary)'
             }}>
               {Math.round(totalChores > 0 ? (completedChores / totalChores) * 100 : 0)}%
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Loading State */}
-      {loading && (
-        <div style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          height: '200px',
-          fontSize: '16px',
-          color: '#64748b'
-        }}>
-          Loading chores for {currentDayName}...
+
+          {!isToday(currentDate) && (
+              <button onClick={goToToday} className="btn btn-secondary btn-sm">
+                Go to Today
+              </button>
+          )}
         </div>
-      )}
+      </div>
 
       {/* No Chores Message */}
       {!loading && totalChores === 0 && (
-        <div style={{
-          backgroundColor: 'white',
-          borderRadius: '12px',
-          padding: '40px 24px',
-          textAlign: 'center',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
-        }}>
-          <div style={{ fontSize: '18px', fontWeight: '600', color: '#1e293b', marginBottom: '8px' }}>
-            No chores scheduled for {currentDayName}
+          <div className="card">
+            <div className="no-events">
+              <h3>No chores scheduled for {currentDayName}</h3>
+              <p>Enjoy your free day! 🎉</p>
+            </div>
           </div>
-          <div style={{ fontSize: '14px', color: '#64748b' }}>
-            Enjoy your free day! 🎉
-          </div>
-        </div>
       )}
 
       {/* Main Content - Card Layout */}
       {!loading && totalChores > 0 && (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: '20px',
-          maxWidth: '1400px',
-          margin: '0 auto'
-        }}>
+          <div className="grid grid-responsive">
           {Object.entries(groupedChores).map(([childName, chores]) => {
-            const colors = MEMBER_COLORS[childName as keyof typeof MEMBER_COLORS] || MEMBER_COLORS.Dad;
+            const colors = MEMBER_COLORS[childName as keyof typeof MEMBER_COLORS] || MEMBER_COLORS["Rachel/Adam"];
 
             return (
-              <div key={childName} style={{
-                backgroundColor: 'white',
-                borderRadius: '16px',
-                overflow: 'hidden',
-                boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
+              <div key={childName} className="card" style={{
                 border: `2px solid ${colors.border}`
               }}>
                 {/* Header */}
                 <div style={{
                   backgroundColor: colors.bg,
-                  padding: '16px 20px',
+                  padding: 'var(--space-4)',
+                  margin: 'calc(-1 * var(--space-6))',
+                  marginBottom: 'var(--space-4)',
                   borderBottom: `1px solid ${colors.border}`,
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '12px'
+                  gap: 'var(--space-3)'
                 }}>
                   <div style={{
                     width: '40px',
                     height: '40px',
-                    borderRadius: '50%',
+                    borderRadius: 'var(--radius-full)',
                     backgroundColor: colors.border,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     color: 'white',
                     fontWeight: '600',
-                    fontSize: '16px'
+                    fontSize: '1rem'
                   }}>
                     {childName.charAt(0)}
                   </div>
                   <div>
-                    <div style={{
-                      fontSize: '18px',
-                      fontWeight: '600',
-                      color: colors.text
-                    }}>
+                    <h3 className="mb-0" style={{ color: colors.text }}>
                       {childName}
-                    </div>
-                    <div style={{
-                      fontSize: '12px',
-                      color: '#64748b',
-                      opacity: 0.8
-                    }}>
+                    </h3>
+                    <p className="text-sm mb-0" style={{ opacity: 0.8 }}>
                       {chores.filter(c => c.completed).length} of {chores.length} completed
-                    </div>
+                    </p>
                   </div>
                 </div>
 
                 {/* Chore List */}
-                <div style={{ padding: '12px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
                   {chores.map((chore) => (
                     <div
                       key={`${chore.chore_id}-${chore.day_name}`}
@@ -516,57 +361,54 @@ export default function ChoreChartDisplay(): JSX.Element {
                       style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '12px',
-                        padding: '12px',
-                        margin: '4px 0',
-                        backgroundColor: chore.completed ? colors.bg : '#f8fafc',
-                        borderRadius: '12px',
+                        gap: 'var(--space-3)',
+                        padding: 'var(--space-3)',
+                        backgroundColor: chore.completed ? colors.bg : 'var(--bg-tertiary)',
+                        borderRadius: 'var(--radius-lg)',
                         cursor: 'pointer',
-                        border: `1px solid ${chore.completed ? colors.border : '#e2e8f0'}`,
-                        transition: 'all 0.2s ease',
+                        border: `1px solid ${chore.completed ? colors.border : 'var(--border-color)'}`,
+                        transition: 'var(--transition)',
                         opacity: chore.completed ? 0.8 : 1
                       }}
                     >
                       <div style={{
                         width: '20px',
                         height: '20px',
-                        borderRadius: '50%',
+                        borderRadius: 'var(--radius-full)',
                         backgroundColor: chore.completed ? colors.border : 'transparent',
-                        border: chore.completed ? 'none' : `2px solid #cbd5e1`,
+                        border: chore.completed ? 'none' : '2px solid var(--border-color)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         flexShrink: 0
                       }}>
                         {chore.completed && (
-                          <div style={{
+                          <span style={{
                             color: 'white',
-                            fontSize: '12px',
+                            fontSize: '0.75rem',
                             fontWeight: 'bold'
                           }}>
                             ✓
-                          </div>
+                          </span>
                         )}
                       </div>
 
                       <div style={{ flex: 1 }}>
                         <div style={{
-                          fontSize: '14px',
+                          fontSize: '0.875rem',
                           fontWeight: '500',
-                          color: chore.completed ? colors.text : '#1e293b',
+                          color: chore.completed ? colors.text : 'var(--text-primary)',
                           textDecoration: chore.completed ? 'line-through' : 'none'
                         }}>
                           {chore.task}
                         </div>
                       </div>
 
-                      <div style={{
-                        fontSize: '12px',
-                        fontWeight: '500',
-                        color: chore.completed ? colors.text : '#64748b',
-                        backgroundColor: chore.completed ? 'transparent' : '#f1f5f9',
-                        padding: '4px 8px',
-                        borderRadius: '6px'
+                      <div className="status" style={{
+                        fontSize: '0.75rem',
+                        backgroundColor: chore.completed ? 'transparent' : 'var(--bg-primary)',
+                        color: chore.completed ? colors.text : 'var(--text-secondary)',
+                        border: 'none'
                       }}>
                         {chore.completed ? '✓' : '○'}
                       </div>
@@ -579,7 +421,7 @@ export default function ChoreChartDisplay(): JSX.Element {
         </div>
       )}
 
-      {/* Load modal */}
+      {/* Load Modal */}
       {loadModalOpen && (
         <div style={{
           position: 'fixed',
@@ -590,104 +432,47 @@ export default function ChoreChartDisplay(): JSX.Element {
           zIndex: 1200,
           backgroundColor: 'rgba(0,0,0,0.4)'
         }}>
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '16px',
-            padding: '24px',
+          <div className="card" style={{
             width: '800px',
             maxWidth: '95%',
             zIndex: 1201,
-            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)'
+            boxShadow: 'var(--shadow-xl)'
           }}>
-            <h3 style={{ margin: '0 0 16px 0', fontSize: '20px', fontWeight: '600' }}>
-              Load Chores (JSON or CSV)
-            </h3>
-            <p style={{ margin: '0 0 20px 0', color: '#64748b' }}>
-              Load from CSV file (chore_chart.csv) or paste JSON data.
-            </p>
+            <h3 className="mb-4">Load Chores (JSON or CSV)</h3>
+            <p className="mb-4">Load from CSV file (chore_chart.csv) or paste JSON data.</p>
 
-            <div style={{ marginBottom: '20px' }}>
+            <div className="form-group">
               <textarea
                 value={loadPayload}
                 onChange={e => setLoadPayload(e.target.value)}
                 rows={6}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '14px',
-                  fontFamily: 'monospace'
-                }}
+                style={{ fontFamily: 'var(--font-mono)' }}
                 placeholder='{ "chores": [{ "child_name":"Joe", "task":"Feed Dogs", "days":"sunday|monday|tuesday" }] }'
               />
-              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '8px' }}>
-                <button
-                  onClick={() => setLoadPayload('')}
-                  style={{
-                    padding: '8px 16px',
-                    backgroundColor: '#f1f5f9',
-                    color: '#475569',
-                    border: 'none',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    cursor: 'pointer'
-                  }}
-                >
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => setLoadPayload('')} className="btn btn-secondary btn-sm">
                   Clear JSON
                 </button>
-                <button
-                  onClick={() => void handleLoadFromJSON()}
-                  style={{
-                    padding: '8px 16px',
-                    backgroundColor: '#3b82f6',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    cursor: 'pointer'
-                  }}
-                >
+                <button onClick={() => void handleLoadFromJSON()} className="btn btn-sm">
                   Load JSON
                 </button>
               </div>
             </div>
 
-            <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '20px 0' }} />
+            <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)', margin: 'var(--space-4) 0' }} />
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div className="flex items-center gap-3">
               <button
                 onClick={() => void handleCsvLoad()}
                 disabled={uploadingCsv}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#3b82f6',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  cursor: uploadingCsv ? 'not-allowed' : 'pointer',
-                  opacity: uploadingCsv ? 0.6 : 1
-                }}
+                className="btn"
               >
                 {uploadingCsv ? 'Loading...' : 'Load from CSV File'}
               </button>
-              <span style={{ fontSize: '14px', color: '#64748b', flex: 1 }}>
+              <span className="text-sm flex-1">
                 Reads from ~/.pi_calendar/chore_chart.csv
               </span>
-              <button
-                onClick={closeLoadModal}
-                type="button"
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#f1f5f9',
-                  color: '#475569',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  cursor: 'pointer'
-                }}
-              >
+              <button onClick={closeLoadModal} className="btn btn-secondary">
                 Close
               </button>
             </div>
@@ -695,24 +480,7 @@ export default function ChoreChartDisplay(): JSX.Element {
         </div>
       )}
 
-      {/* Toast */}
-      {toast && (
-        <div style={{
-          position: 'fixed',
-          bottom: '20px',
-          right: '20px',
-          padding: '12px 20px',
-          borderRadius: '8px',
-          backgroundColor: toast.type === 'success' ? '#059669' : toast.type === 'error' ? '#dc2626' : '#3b82f6',
-          color: 'white',
-          fontSize: '14px',
-          fontWeight: '500',
-          zIndex: 1000,
-          boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'
-        }}>
-          {toast.message}
-        </div>
-      )}
+      {toast && <Toast {...toast} onClose={() => setToast(null)} />}
     </div>
   );
-}
+};

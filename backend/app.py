@@ -96,6 +96,8 @@ def create_app() -> Flask:
     app.limiter = limiter
 
     logger.info("Flask application created successfully")
+
+    app.config['JSONIFY_PRETTYPRINT_REGULAR'] = True
     return app
 
 
@@ -528,7 +530,9 @@ def serve_react(path):
         return send_from_directory(app.static_folder, path)
 
     # Serve index.html for React Router routes
-    index_path = Path(app.static_folder) / 'index.html'
+    index_path = Path(__file__).parent.parent.parent / 'frontend' / 'index.html'
+    print(f"index_path: {index_path}")  # Add this to verify
+    print(f"index_path exists: {index_path.exists()}")  # Add this too
     if index_path.exists():
         return send_from_directory(app.static_folder, 'index.html')
     else:

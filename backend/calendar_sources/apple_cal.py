@@ -55,7 +55,6 @@ class AppleCalendarSource(BaseCalendarSource):
                 return False
 
             self.password = stored_creds['app_password']
-
             # Create CalDAV client
             self.client = caldav.DAVClient(
                 url=self.server_url,
@@ -194,16 +193,18 @@ class AppleCalendarSource(BaseCalendarSource):
                 return []
 
             # Search for events in date range
-            events = calendar.date_search(
-                start=start_date.date(),
-                end=end_date.date(),
-                expand=True  # Expand recurring events
+            events = calendar.search(
+                start=start_date,
+                end=end_date,
+                event=True,
+                expand=True
             )
 
             result = []
             for event in events:
                 try:
                     cal_event = self._parse_apple_event(event, calendar_id)
+                    print(f"EVENT => {cal_event}")
                     if cal_event:
                         result.append(cal_event)
 

@@ -60,7 +60,6 @@ def rate_limit(limit_string: str):
 # ===============================
 # CALENDAR DATA ENDPOINTS
 # ===============================
-
 @api_bp.route('/events')
 @rate_limit(f"{API_RATE_LIMIT_PER_HOUR} per hour")
 def get_events():
@@ -79,8 +78,13 @@ def get_events():
     try:
         logger.info(f"Events request from {request.remote_addr}")
 
+        # Add debug logging
+        logger.info(f"Raw start_date param: {request.args.get('start_date')}")
+        logger.info(f"Raw end_date param: {request.args.get('end_date')}")
+        logger.info(f"Raw view param: {request.args.get('view')}")
+
         # Parse query parameters
-        view = request.args.get('view', 'week')
+        view = request.args.get('view', 'month')
         accounts = request.args.get('accounts', '').split(',') if request.args.get('accounts') else None
         calendars = request.args.get('calendars', '').split(',') if request.args.get('calendars') else None
 
@@ -90,22 +94,29 @@ def get_events():
 
         if request.args.get('start_date'):
             try:
-                start_date = datetime.fromisoformat(request.args.get('start_date'))
+                from urllib.parse import unquote
+                start_date_str = unquote(request.args.get('start_date'))
+                start_date = datetime.fromisoformat(start_date_str.replace('Z', '+00:00'))
+                logger.info(f"Parsed start_date: {start_date}")
             except ValueError:
                 logger.warning(f"Invalid start_date format: {request.args.get('start_date')}")
                 return jsonify({'error': 'Invalid start_date format. Use ISO format.'}), 400
 
         if request.args.get('end_date'):
             try:
-                end_date = datetime.fromisoformat(request.args.get('end_date'))
+                from urllib.parse import unquote
+                end_date_str = unquote(request.args.get('end_date'))
+                end_date = datetime.fromisoformat(end_date_str.replace('Z', '+00:00'))
+                logger.info(f"Parsed end_date: {end_date}")
             except ValueError:
                 logger.warning(f"Invalid end_date format: {request.args.get('end_date')}")
                 return jsonify({'error': 'Invalid end_date format. Use ISO format.'}), 400
 
-        # Set default date ranges based on view
+        # Set default date ranges based on view ONLY if no dates provided
         if not start_date:
             from datetime import timezone
             start_date = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+            logger.info(f"Using default start_date: {start_date}")
 
         if not end_date:
             if view == 'day':
@@ -116,6 +127,9 @@ def get_events():
                 end_date = start_date + timedelta(days=30)
             else:
                 end_date = start_date + timedelta(days=7)  # Default to week
+            logger.info(f"Using default end_date: {end_date}")
+
+        logger.info(f"Final date range: {start_date} to {end_date}")
 
         # Get events from sync engine
         events = sync_engine.get_events(
@@ -125,7 +139,7 @@ def get_events():
             calendar_ids=calendars
         )
 
-        logger.info(f"Returning {len(events)} events for view={view}")
+        logger.info(f"Retrieved {len(events)} events from sync engine")
 
         # Convert events to JSON-serializable format
         events_data = []
@@ -155,6 +169,8 @@ def get_events():
                     'type': acc_type,
                     'color': acc.get('color', '#4285f4')
                 }
+
+        logger.info(f"Returning {len(events_data)} events for view={view}")
 
         return jsonify({
             'events': events_data,

@@ -148,77 +148,77 @@ class MigrationManager:
 
             # Schema version table
             conn.execute("""
-                CREATE TABLE IF NOT EXISTS schema_version (
-                    version INTEGER PRIMARY KEY,
-                    description TEXT NOT NULL,
-                    applied_at TEXT NOT NULL
-                )
-            """)
+                   CREATE TABLE IF NOT EXISTS schema_version (
+                       version INTEGER PRIMARY KEY,
+                       description TEXT NOT NULL,
+                       applied_at TEXT NOT NULL
+                   )
+               """)
 
             # Events table
             conn.execute("""
-                CREATE TABLE IF NOT EXISTS events (
-                    id TEXT PRIMARY KEY,
-                    account_id TEXT NOT NULL,
-                    calendar_id TEXT NOT NULL,
-                    title TEXT NOT NULL,
-                    description TEXT,
-                    start_time TEXT NOT NULL,
-                    end_time TEXT NOT NULL,
-                    all_day BOOLEAN NOT NULL,
-                    location TEXT,
-                    color TEXT,
-                    attendees TEXT,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    UNIQUE(id, account_id, calendar_id)
-                )
-            """)
+                   CREATE TABLE IF NOT EXISTS events (
+                       id TEXT PRIMARY KEY,
+                       account_id TEXT NOT NULL,
+                       calendar_id TEXT NOT NULL,
+                       title TEXT NOT NULL,
+                       description TEXT,
+                       start_time TEXT NOT NULL,
+                       end_time TEXT NOT NULL,
+                       all_day BOOLEAN NOT NULL,
+                       location TEXT,
+                       color TEXT,
+                       attendees TEXT,
+                       created_at TEXT NOT NULL,
+                       updated_at TEXT NOT NULL,
+                       UNIQUE(id, account_id, calendar_id)
+                   )
+               """)
 
             # Calendars table
             conn.execute("""
-                CREATE TABLE IF NOT EXISTS calendars (
-                    id TEXT NOT NULL,
-                    account_id TEXT NOT NULL,
-                    name TEXT NOT NULL,
-                    description TEXT,
-                    color TEXT,
-                    primary_calendar BOOLEAN,
-                    access_role TEXT,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    PRIMARY KEY (id, account_id)
-                )
-            """)
+                   CREATE TABLE IF NOT EXISTS calendars (
+                       id TEXT NOT NULL,
+                       account_id TEXT NOT NULL,
+                       name TEXT NOT NULL,
+                       description TEXT,
+                       color TEXT,
+                       primary_calendar BOOLEAN,
+                       access_role TEXT,
+                       created_at TEXT NOT NULL,
+                       updated_at TEXT NOT NULL,
+                       PRIMARY KEY (id, account_id)
+                   )
+               """)
 
             # Sync status table
             conn.execute("""
-                CREATE TABLE IF NOT EXISTS sync_status (
-                    account_id TEXT PRIMARY KEY,
-                    calendar_id TEXT NOT NULL,
-                    last_sync TEXT NOT NULL,
-                    event_count INTEGER NOT NULL,
-                    last_error TEXT
-                )
-            """)
+                   CREATE TABLE IF NOT EXISTS sync_status (
+                       account_id TEXT PRIMARY KEY,
+                       calendar_id TEXT NOT NULL,
+                       last_sync TEXT NOT NULL,
+                       event_count INTEGER NOT NULL,
+                       last_error TEXT
+                   )
+               """)
 
             # Indexes
             conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_events_account_calendar 
-                ON events(account_id, calendar_id)
-            """)
+                   CREATE INDEX IF NOT EXISTS idx_events_account_calendar 
+                   ON events(account_id, calendar_id)
+               """)
             conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_events_time_range 
-                ON events(start_time, end_time)
-            """)
+                   CREATE INDEX IF NOT EXISTS idx_events_time_range 
+                   ON events(start_time, end_time)
+               """)
             conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_events_all_day 
-                ON events(all_day)
-            """)
+                   CREATE INDEX IF NOT EXISTS idx_events_all_day 
+                   ON events(all_day)
+               """)
             conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_events_account_time 
-                ON events(account_id, start_time)
-            """)
+                   CREATE INDEX IF NOT EXISTS idx_events_account_time 
+                   ON events(account_id, start_time)
+               """)
 
             conn.commit()
 

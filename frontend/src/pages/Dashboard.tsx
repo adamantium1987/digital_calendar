@@ -365,7 +365,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ navigate }) => {
                 } catch (e) {
                   /* ignore storage errors silently */
                 }
-                navigate('/api/chores');
+                navigate('/chores');
               }}
               className="btn btn-secondary"
               style={{ width: '100%' }}
