@@ -1,6 +1,7 @@
 // src/components/calendar/EventItem.tsx
 import React from "react";
 import {CalendarEvent} from "../../types/calendarEvent";
+import styles from "./EventItem.module.css";
 
 interface EventItemProps {
   event: CalendarEvent;
@@ -23,13 +24,13 @@ export const EventItem: React.FC<EventItemProps> = ({
 
   return (
     <div
-      className={compact ? "compact-event" : "event-card"}
+      className={compact ? styles.compactEvent : styles.eventCard}
       style={{ background: event.color || "var(--primary-500)" }}
       onClick={onClick}
     >
-      <div className="title">{title}</div>
+      <div className={styles.title}>{title}</div>
       {!compact && showTime && !event.all_day && (
-        <div className="time">{new Date(event.start_time).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}</div>
+        <div className={styles.time}>{new Date(event.start_time).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}</div>
       )}
     </div>
   );
