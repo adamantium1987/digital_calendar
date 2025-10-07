@@ -4,7 +4,7 @@ import { AccountSetup } from './pages/AccountSetup';
 import { GoogleSetup } from './pages/GoogleSetup';
 import { AppleSetup } from './pages/AppleSetup';
 import { CalendarDisplay } from './pages/CalendarDisplay';
-import { ChoreChartDisplay } from './pages/ChoreChartDisplay';
+import { TaskChartDisplay } from './pages/TaskChartDisplay';
 
 const App: React.FC = () => {
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
@@ -27,14 +27,15 @@ const App: React.FC = () => {
 
   if (currentPath === '/setup') return <AccountSetup navigate={navigate} />;
   if (currentPath.startsWith('/setup/google')) return <GoogleSetup navigate={navigate} />;
-if (currentPath.startsWith('/setup/apple')) {
-  const urlParams = new URLSearchParams(window.location.search);
-  const accountId = urlParams.get('id');
-  const step = urlParams.get('step');
-  return <AppleSetup navigate={navigate} accountId={accountId} step={step} />;
-}
-  if (currentPath === '/chores')return <ChoreChartDisplay navigate={navigate} />;
-  if (currentPath === '/display') return <CalendarDisplay />;
+
+  if (currentPath.startsWith('/setup/apple')) {
+    const urlParams = new URLSearchParams(window.location.search);
+    const accountId = urlParams.get('id');
+    const step = urlParams.get('step');
+    return <AppleSetup navigate={navigate} accountId={accountId} step={step} />;
+  }
+  if (currentPath === '/tasks')return <TaskChartDisplay  navigate={navigate}/>;
+  if (currentPath === '/display') return <CalendarDisplay  navigate={navigate}/>;
   return <Dashboard navigate={navigate} />;
 };
 

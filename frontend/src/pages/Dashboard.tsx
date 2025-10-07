@@ -1,15 +1,24 @@
 // Dashboard.tsx - Using CSS classes
 import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../utils/api';
-import { Header } from '../components/Header';
-import { Toast } from '../components/Toast';
-import { SyncStatus, Accounts, CacheStats } from '../types';
+import { Header } from '../components/global/Header';
+import { Toast } from '../components/global/Toast';
+import {Accounts} from "../types/accounts";
+import {SyncStatus} from "../types/syncStatus";
+import {CacheStats} from "../types/cacheStats";
+import {useSwipeNavigation} from "../hooks/useSwipeNavigation";
 
 interface DashboardProps {
   navigate: (path: string) => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ navigate }) => {
+  useSwipeNavigation({
+    onSwipeLeft: () => navigate('/display'), // Swipe left goes to Calendar
+    onSwipeRight: () => {}, // Already at first page, do nothing
+    minSwipeDistance: 75
+  });
+
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [accounts, setAccounts] = useState<Accounts>({ google: [], apple: [] });
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
@@ -17,10 +26,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ navigate }) => {
   const [syncing, setSyncing] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' | 'info' } | null>(null);
 
-  // Chore-specific state
-  const [chores, setChores] = useState<any[]>([]);
-  const [choreSyncing, setChoreSyncing] = useState(false);
-  const [choreLoading, setChoreLoading] = useState(false);
+  // Task-specific state
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [taskSyncing, setTaskSyncing] = useState(false);
+  const [taskLoading, setTaskLoading] = useState(false);
 
   useEffect(() => {
     loadDashboardData();
@@ -28,14 +37,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ navigate }) => {
     return () => clearInterval(interval);
   }, []);
 
-  const loadChores = useCallback(async () => {
+  const loadTasks = useCallback(async () => {
     try {
-      const res = await api.get<any>(`/chores`);
-      const list = res?.chores ?? [];
-      setChores(list);
+      const res = await api.get<any>(`/tasks`);
+      const list = res?.tasks ?? [];
+      setTasks(list);
     } catch (err) {
-      console.error('Failed loading chores', err);
-      setChores([]);
+      console.error('Failed loading tasks', err);
+      setTasks([]);
     }
   }, []);
 
@@ -49,14 +58,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ navigate }) => {
       setSyncStatus(status);
       setAccounts(accts.accounts);
       setCacheStats(status.cache_stats);
-      await loadChores();
+      await loadTasks();
       setLoading(false);
     } catch (error) {
       console.error('Error loading dashboard:', error);
       setToast({ message: 'Failed to load dashboard data', type: 'error' });
       setLoading(false);
     }
-  }, [loadChores]);
+  }, [loadTasks]);
 
   const handleForceSync = async () => {
     setSyncing(true);
@@ -71,45 +80,45 @@ export const Dashboard: React.FC<DashboardProps> = ({ navigate }) => {
     }
   };
 
-  const handleChoreSync = async () => {
-    setChoreSyncing(true);
+  const handleTaskSync = async () => {
+    setTaskSyncing(true);
     try {
-      const res = (await api.post('/chores/sync')) as { message?: string };
-      setToast({ message: res.message || 'Chores sync started', type: 'success' });
-      setTimeout(loadChores, 1500);
+      const res = (await api.post('/tasks/sync')) as { message?: string };
+      setToast({ message: res.message || 'Tasks sync started', type: 'success' });
+      setTimeout(loadTasks, 1500);
     } catch (err) {
-      console.error('Chore sync failed', err);
-      setToast({ message: 'Chore sync failed', type: 'error' });
+      console.error('Task sync failed', err);
+      setToast({ message: 'Task sync failed', type: 'error' });
     } finally {
-      setChoreSyncing(false);
+      setTaskSyncing(false);
     }
   };
 
-  const handleChoreLoad = async () => {
-    setChoreLoading(true);
+  const handleTaskLoad = async () => {
+    setTaskLoading(true);
     try {
-      const res = (await api.post('/chores/load')) as { message?: string };
-      setToast({ message: res.message || 'Chores loaded', type: 'success' });
-      await loadChores();
+      const res = (await api.post('/tasks/load')) as { message?: string };
+      setToast({ message: res.message || 'Tasks loaded', type: 'success' });
+      await loadTasks();
     } catch (err) {
-      console.error('Chore load failed', err);
-      setToast({ message: 'Chore load failed', type: 'error' });
+      console.error('Task load failed', err);
+      setToast({ message: 'Task load failed', type: 'error' });
     } finally {
-      setChoreLoading(false);
+      setTaskLoading(false);
     }
   };
 
-  // Auto-refresh chores when user returns from /chores:
+  // Auto-refresh tasks when user returns from /tasks:
   useEffect(() => {
     const refreshIfReturned = async () => {
-      const ts = sessionStorage.getItem('opened_chore_page_at');
+      const ts = sessionStorage.getItem('opened_task_page_at');
       if (!ts) return;
       try {
-        await loadChores();
+        await loadTasks();
       } catch (e) {
         /* ignore */
       } finally {
-        sessionStorage.removeItem('opened_chore_page_at');
+        sessionStorage.removeItem('opened_task_page_at');
       }
     };
 
@@ -128,7 +137,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ navigate }) => {
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [loadChores]);
+  }, [loadTasks]);
 
   if (loading) {
     return (
@@ -146,7 +155,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ navigate }) => {
 
       <div className="status-grid">
         <div className="card">
-          <h3>🔄 Sync Status</h3>
+          <h3>🔄 Calendar Sync Status</h3>
           <div style={{ marginBottom: 'var(--space-4)' }}>
             <div style={{
               display: 'flex',
@@ -323,7 +332,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ navigate }) => {
         </div>
 
         <div className="card">
-          <h3>📝 Chore Chart</h3>
+          <h3>📝 Task Chart</h3>
           <div style={{
             background: 'var(--bg-primary)',
             padding: 'var(--space-4)',
@@ -332,45 +341,45 @@ export const Dashboard: React.FC<DashboardProps> = ({ navigate }) => {
             marginBottom: 'var(--space-4)'
           }}>
             <div style={{ fontSize: '2rem', fontWeight: '700', color: 'var(--primary-500)' }}>
-              {chores?.length || 0}
+              {tasks?.length || 0}
             </div>
-            <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Total Chores</div>
+            <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Total Tasks</div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
             <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
               <button
-                onClick={handleChoreSync}
+                onClick={handleTaskSync}
                 className="btn"
-                disabled={choreSyncing}
+                disabled={taskSyncing}
                 style={{ flex: 1 }}
               >
-                {choreSyncing ? 'Syncing...' : 'Sync'}
+                {taskSyncing ? 'Syncing...' : 'Sync'}
               </button>
 
               <button
-                onClick={handleChoreLoad}
+                onClick={handleTaskLoad}
                 className="btn btn-secondary"
-                disabled={choreLoading}
+                disabled={taskLoading}
                 style={{ flex: 1 }}
               >
-                {choreLoading ? 'Loading...' : 'Load'}
+                {taskLoading ? 'Loading...' : 'Load'}
               </button>
             </div>
 
             <button
               onClick={() => {
                 try {
-                  sessionStorage.setItem('opened_chore_page_at', Date.now().toString());
+                  sessionStorage.setItem('opened_task_page_at', Date.now().toString());
                 } catch (e) {
                   /* ignore storage errors silently */
                 }
-                navigate('/chores');
+                navigate('/tasks');
               }}
               className="btn btn-secondary"
               style={{ width: '100%' }}
             >
-              Open Chore Chart
+              Open Task Chart
             </button>
           </div>
         </div>

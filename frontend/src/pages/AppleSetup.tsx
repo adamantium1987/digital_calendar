@@ -1,7 +1,7 @@
 // AppleSetup.tsx - Using CSS classes
 import React, { useState } from 'react';
 import { api } from '../utils/api';
-import { Header } from '../components/Header';
+import { Header } from '../components/global/Header';
 
 interface AppleSetupProps {
   navigate: (path: string) => void;

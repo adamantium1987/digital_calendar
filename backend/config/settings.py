@@ -7,6 +7,7 @@ Handles all system settings, account credentials, and preferences
 import json
 import os
 import logging
+import shutil
 from pathlib import Path
 from typing import Dict, Any, Optional
 from cryptography.fernet import Fernet
@@ -146,6 +147,23 @@ class ConfigManager:
             logger.info("Generated new Flask secret key")
         else:
             logger.debug("Using existing Flask secret key")
+
+    def copy_chore_chart(self) -> Path:
+        """Copy task_chart.csv into the config directory if missing.
+        Returns:
+            Path to the task_chart.csv inside the config directory.
+        """
+        src = Path("task_chart.csv").resolve()
+        if not src.exists():
+            raise FileNotFoundError(f"Chore chart not found at {src}")
+
+        dest = self.config_dir / "task_chart.csv"
+
+        if not dest.exists():  # only copy if missing
+            shutil.copy2(src, dest)  # preserves metadata
+            os.chmod(dest, 0o600)  # secure permissions
+
+        return dest
 
     def save_config(self):
         """Save configuration to file with proper permissions"""

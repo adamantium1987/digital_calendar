@@ -13,7 +13,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
-from .chore_manager import ChoreManager
+from .task_manager import TaskManager
 from ..calendar_sources.google_cal import GoogleCalendarSource
 from ..calendar_sources.apple_cal import AppleCalendarSource
 from ..calendar_sources.base import CalendarEvent, BaseCalendarSource
@@ -36,7 +36,7 @@ class SyncEngine:
     def __init__(self) -> None:
         """Initialize sync engine with proper components"""
         self.cache_manager: CacheManager = CacheManager()
-        self.chore_manager: ChoreManager = ChoreManager(self.cache_manager)
+        self.chore_manager: TaskManager = TaskManager(self.cache_manager)
         # self.calendar_manager: CalendarManager = CalendarManager(self.cache_manager)
         self.scheduler: BackgroundScheduler = BackgroundScheduler()
         self.sources: Dict[str, BaseCalendarSource] = {}
@@ -73,9 +73,11 @@ class SyncEngine:
             from .migrations import MigrationManager
             migration_manager = MigrationManager(self.cache_manager.db_path)
             migration_manager.migrate()
+            current = migration_manager.get_current_version()
             logger.info("Database migrations completed")
         except Exception as e:
             logger.error(f"Migration error: {e}", exc_info=True)
+
 
         # Start background scheduler for sync
         sync_interval = config.get('sync.interval_minutes', DEFAULT_SYNC_INTERVAL_MINUTES)
@@ -96,7 +98,7 @@ class SyncEngine:
             replace_existing=True
         )
 
-        # Add chore sync job
+        # Add task sync job
         self.scheduler.add_job(
             func=self._scheduled_chore_sync,
             trigger='cron',
@@ -221,8 +223,8 @@ class SyncEngine:
             self.sync_all()
 
             # Also sync chores on startup
-            logger.info("Starting initial chore sync...")
-            self.chore_manager.sync_chores()
+            logger.info("Starting initial task sync...")
+            self.chore_manager.sync_tasks()
 
         except Exception as e:
             logger.error(f"Initial sync error: {e}", exc_info=True)
@@ -250,12 +252,12 @@ class SyncEngine:
             logger.error(f"Scheduled cleanup error: {e}", exc_info=True)
 
     def _scheduled_chore_sync(self) -> None:
-        """Scheduled chore sync job"""
+        """Scheduled task sync job"""
         try:
-            logger.debug("Running scheduled chore sync")
-            self.chore_manager.sync_chores()
+            logger.debug("Running scheduled task sync")
+            self.chore_manager.sync_tasks()
         except Exception as e:
-            logger.error(f"Scheduled chore sync error: {e}", exc_info=True)
+            logger.error(f"Scheduled task sync error: {e}", exc_info=True)
 
     def sync_all(self) -> bool:
         """

@@ -1,9 +1,9 @@
 // AccountSetup.tsx - Using CSS classes
 import React, { useState, useEffect } from 'react';
 import { api } from '../utils/api';
-import { Header } from '../components/Header';
-import { Toast } from '../components/Toast';
-import { Accounts } from '../types';
+import { Header } from '../components/global/Header';
+import { Toast } from '../components/global/Toast';
+import {Accounts} from "../types/accounts";
 
 interface AccountSetupProps {
   navigate: (path: string) => void;

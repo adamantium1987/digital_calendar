@@ -1,0 +1,67 @@
+name,type,task,sunday,monday,tuesday,wednesday,thursday,friday,saturday
+Mason,chore,Let Dogs Out,Y,Y,Y,Y,Y,Y,Y
+Mason,chore,Feed Dogs,Y,Y,Y,Y,Y,Y,Y
+Mason,chore,Laundry In Basket,Y,Y,Y,Y,Y,Y,Y
+Mason,chore,Clear Table After Meals,Y,Y,Y,Y,Y,Y,Y
+Mason,chore,Clean Up Home-School Stuff,Y,Y,Y,Y,Y,Y,Y
+Mason,chore,Pick Up Toys - Living Room,Y,Y,Y,Y,Y,Y,Y
+Mason,chore,Pick Up Toys - Upstairs,Y,Y,Y,Y,Y,Y,Y
+Mason,chore,Pick Up Toys - Bedroom,Y,Y,Y,Y,Y,Y,Y
+Mason,chore,Towels in Washing Machine,N,Y,N,N,N,N,N
+Mason,chore,Help Dad with Trash,N,N,Y,N,N,N,N
+Mason,chore,Blankets in Washing Machine,N,N,N,Y,N,N,N
+Mason,chore,Sheets in Washing Machine,N,N,N,N,Y,N,N
+Mason,chore,Laundry in Washing Machine,N,N,N,N,N,Y,Y
+Mason,hygiene,Comb Hair,Y,Y,Y,Y,Y,Y,Y
+Mason,hygiene,Brush Teeth,Y,Y,Y,Y,Y,Y,Y
+Makenzie,chore,Let Cat In/Out,Y,Y,Y,Y,Y,Y,Y
+Makenzie,chore,Feed Cat,Y,Y,Y,Y,Y,Y,Y
+Makenzie,chore,Laundry In Basket,Y,Y,Y,Y,Y,Y,Y
+Makenzie,chore,Pick Up Toys - Living Room,Y,Y,Y,Y,Y,Y,Y
+Makenzie,chore,Pick Up Toys - Upstairs,Y,Y,Y,Y,Y,Y,Y
+Makenzie,chore,Pick Up Toys - Bedroom,Y,Y,Y,Y,Y,Y,Y
+Makenzie,chore,Bath Mats in Washing Machine,N,Y,N,N,N,N,N
+Makenzie,chore,Water Plants,N,N,N,Y,N,N,N
+Makenzie,chore,Laundry in Washing Machine,N,N,N,N,N,Y,Y
+Makenzie,chore,Sheets in Washing Machine,N,N,N,N,Y,N,N
+Makenzie,hygiene,Brush Hair,Y,Y,Y,Y,Y,Y,Y
+Makenzie,hygiene,Brush Teeth,Y,Y,Y,Y,Y,Y,Y
+Parents,chore,wipe counters,Y,Y,Y,Y,Y,Y,Y
+Parents,chore,make beds,Y,Y,Y,Y,Y,Y,Y
+Parents,chore,dishes,Y,Y,Y,Y,Y,Y,Y
+Parents,chore,take out trash,Y,Y,Y,Y,Y,Y,Y
+Parents,chore,one load laundry,Y,Y,Y,Y,Y,Y,Y
+Parents,chore,kitchen floors,Y,Y,Y,Y,Y,Y,Y
+Parents,chore,laundry (Clothes),N,N,Y,N,N,N,N
+Parents,chore,toilets,N,Y,N,N,N,N,N
+Parents,chore,sinks/mirrors/coutners,N,Y,N,N,N,N,N
+Parents,chore,showers/tubs,N,Y,N,N,N,N,N
+Parents,chore,mats/rugs and towels,N,Y,N,N,N,N,N
+Parents,chore,sweep and mop,N,Y,N,N,N,N,N
+Parents,chore,laundry (towels and mats),N,Y,N,N,N,N,N
+Parents,chore,glass cooktop,N,N,Y,N,N,N,N
+Parents,chore,counters and sink,N,N,Y,N,N,N,N
+Parents,chore,clean out fridge,N,N,Y,N,N,N,N
+Parents,chore,wipe down appliances,N,N,Y,N,N,N,N
+Parents,chore,inside microwave,N,N,Y,N,N,N,N
+Parents,chore,laundry (clothes),N,N,Y,N,N,N,N
+Parents,chore,window and glass doors,N,N,N,Y,N,N,N
+Parents,chore,organize toys,N,N,N,Y,N,N,N
+Parents,chore,water plants,N,N,N,Y,N,N,N
+Parents,chore,dust,N,N,N,Y,N,N,N
+Parents,chore,vacuum and mop,N,N,N,Y,N,N,N
+Parents,chore,laundry (throw blankets),N,N,N,Y,N,N,N
+Parents,chore,organize dresser tops,N,N,N,N,Y,N,N
+Parents,chore,change sheets,N,N,N,N,Y,N,N
+Parents,chore,windows and dust,N,N,N,N,Y,N,N
+Parents,chore,vacuum and mop,N,N,N,N,Y,N,N
+Parents,chore,wash sheets,N,N,N,N,Y,N,N
+Parents,chore,laundry (sheets),N,N,N,N,Y,N,N
+Parents,chore,organize toys,N,N,N,N,N,Y,N
+Parents,chore,dust,N,N,N,N,N,Y,N
+Parents,chore,windows,N,N,N,N,N,Y,N
+Parents,chore,vacuum (stairs too),N,N,N,N,N,Y,N
+Parents,chore,laundry (Clothes),N,N,N,N,N,Y,N
+Matthias,chore,Organize Daily Chaos,Y,Y,Y,Y,Y,Y,Y
+Matthias,hygiene,Comb Hair,Y,Y,Y,Y,Y,Y,Y
+Matthias,hygiene,Brush Teeth,Y,Y,Y,Y,Y,Y,Y

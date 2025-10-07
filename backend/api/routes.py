@@ -7,7 +7,7 @@ Provides clean JSON APIs for calendar data retrieval
 from flask import Blueprint, jsonify, request, current_app
 from datetime import datetime, timedelta
 
-from ..sync.chore_manager import ChoreManager
+from ..sync.task_manager import TaskManager
 from ..sync.sync_engine import sync_engine
 from ..config.settings import config
 from ..config.logger import get_logger
@@ -598,95 +598,94 @@ def get_accounts():
 
 
 # ===============================
-# CHORE CHART ENDPOINTS
+# task CHART ENDPOINTS
 # ===============================
 
-@api_bp.route('/chores')
+@api_bp.route('/tasks')
 @rate_limit(f"{API_RATE_LIMIT_PER_HOUR} per hour")
-def get_chores():
-    """Get chores with optional filtering
+def get_tasks():
+    """Get tasks with optional filtering
 
     Query Parameters:
         day: Day name (e.g., 'monday')
-        child: Child name
+        name: name
         week: Week start date (ISO format)
         format: 'grouped' (default) or 'individual'
 
     Returns:
-        JSON object with chores list
+        JSON object with tasks list
     """
     try:
-        logger.info(f"Chores request from {request.remote_addr}")
+        logger.info(f"tasks request from {request.remote_addr}")
 
         if not sync_engine:
             return jsonify({'error': 'Sync engine not available'}), 503
 
-        chore_manager = ChoreManager(sync_engine.cache_manager)
+        task_manager = TaskManager(sync_engine.cache_manager)
 
         # Parse query parameters
         day_name = request.args.get('day')
-        child_name = request.args.get('child')
-        week_start = request.args.get('week', chore_manager.get_current_week_start())
+        name = request.args.get('name')
+        week_start = request.args.get('week', task_manager.get_current_week_start())
         format_type = request.args.get('format', 'grouped')
-
         if format_type == 'individual':
             # Get individual day records
-            chore_days = chore_manager.cache_manager.get_chore_days(
+            task_days = task_manager.cache_manager.get_task_days(
                 day_name=day_name,
-                child_name=child_name,
+                name=name,
                 week_start=week_start
             )
-
             return jsonify({
-                'chore_days': chore_days,
+                'task_days': task_days,
                 'metadata': {
-                    'total_records': len(chore_days),
+                    'total_records': len(task_days),
                     'week_start': week_start,
                     'format': 'individual'
                 }
             })
         else:
-            # Get grouped chores (original format)
-            chores = chore_manager.cache_manager.get_chores(
+            # Get grouped tasks (original format)
+            tasks = task_manager.cache_manager.get_tasks(
                 day_name=day_name,
-                child_name=child_name,
+                name=name,
                 week_start=week_start
             )
 
             # Convert to JSON-serializable format
-            chores_data = []
-            for chore in chores:
-                chore_data = {
-                    'id': chore.id,
-                    'child_name': chore.child_name,
-                    'task': chore.task,
-                    'days': chore.days,
-                    'completed': chore.completed,
-                    'week_start': chore.week_start
-                }
-                chores_data.append(chore_data)
+            tasks_data = []
+            for task in tasks:
 
+                task_data = {
+                    'id': task.id,
+                    'name': task.name,
+                    'type': task.type,
+                    'task': task.task,
+                    'days': task.days,
+                    'completed': task.completed,
+                    'week_start': task.week_start
+                }
+                tasks_data.append(task_data)
             return jsonify({
-                'chores': chores_data,
+                'tasks': tasks_data,
                 'metadata': {
-                    'total_chores': len(chores_data),
+                    'total_tasks': len(tasks_data),
                     'week_start': week_start,
                     'format': 'grouped'
                 }
             })
 
     except Exception as e:
-        logger.error(f"Error getting chores: {e}", exc_info=True)
+        logger.error(f"Error getting tasks: {e}", exc_info=True)
         return jsonify({'error': 'Internal server error'}), 500
-    # Grouped chores:  /api/chores
-    # Individual day records:/api/chores?format=individual
-    # Specific day: /api/chores?day=monday&format=individual
+    # Grouped tasks:  /api/tasks
+    # Individual day records:/api/tasks?format=individual
+    # Specific day: /api/tasks?day=monday&format=individual
 
 
-@api_bp.route('/chores/<int:chore_id>/<day_name>/complete', methods=['POST'])
+@api_bp.route('/tasks/<int:task_id>/<day_name>/complete', methods=['POST'])
 @rate_limit(f"{API_RATE_LIMIT_PER_HOUR} per hour")
-def complete_chore(chore_id: int, day_name: str):
-    """Mark a chore as complete for a specific day
+def complete_task(task_id: int, day_name: str):
+    """Mark a task as complete for a specific day
 
     Request Body:
         completed: boolean (default: true)
@@ -695,7 +694,7 @@ def complete_chore(chore_id: int, day_name: str):
         JSON success/error response
     """
     try:
-        logger.info(f"Chore completion request from {request.remote_addr}: {chore_id} on {day_name}")
+        logger.info(f"task completion request from {request.remote_addr}: {task_id} on {day_name}")
 
         if not sync_engine:
             return jsonify({'error': 'Sync engine not available'}), 503
@@ -705,7 +704,7 @@ def complete_chore(chore_id: int, day_name: str):
         if day_name.lower() not in valid_days:
             return jsonify({'error': 'Invalid day name'}), 400
 
-        chore_manager = ChoreManager(sync_engine.cache_manager)
+        task_manager = TaskManager(sync_engine.cache_manager)
 
         # Parse request body
         data = request.get_json() or {}
@@ -714,103 +713,103 @@ def complete_chore(chore_id: int, day_name: str):
         if not isinstance(completed, bool):
             return jsonify({'error': 'completed must be boolean'}), 400
 
-        # Update chore for specific day
-        success = chore_manager.cache_manager.update_chore_completion(
-            chore_id=chore_id,
+        # Update task for specific day
+        success = task_manager.cache_manager.update_task_completion(
+            task_id=task_id,
             day_name=day_name.lower(),
             completed=completed,
-            week_start=chore_manager.get_current_week_start()
+            week_start=task_manager.get_current_week_start()
         )
 
         if success:
-            logger.info(f"Chore {chore_id} on {day_name} marked as {'complete' if completed else 'incomplete'}")
+            logger.info(f"task {task_id} on {day_name} marked as {'complete' if completed else 'incomplete'}")
             return jsonify({
                 'status': 'success',
-                'message': f'Chore marked as {"complete" if completed else "incomplete"}',
-                'chore_id': chore_id,
+                'message': f'task marked as {"complete" if completed else "incomplete"}',
+                'task_id': task_id,
                 'day_name': day_name,
                 'completed': completed
             })
         else:
-            logger.warning(f"Failed to update chore: {chore_id} on {day_name}")
-            return jsonify({'error': 'Chore not found or update failed'}), 404
+            logger.warning(f"Failed to update task: {task_id} on {day_name}")
+            return jsonify({'error': 'task not found or update failed'}), 404
 
     except Exception as e:
-        logger.error(f"Error completing chore: {e}", exc_info=True)
+        logger.error(f"Error completing task: {e}", exc_info=True)
         return jsonify({'error': 'Internal server error'}), 500
 
 
-@api_bp.route('/chores/sync', methods=['POST'])
+@api_bp.route('/tasks/sync', methods=['POST'])
 @rate_limit("10 per hour")
-def sync_chores():
-    """Trigger chore synchronization from CSV"""
+def sync_tasks():
+    """Trigger task synchronization from CSV"""
     try:
-        logger.info(f"Chore sync triggered by {request.remote_addr}")
+        logger.info(f"task sync triggered by {request.remote_addr}")
 
         if not sync_engine:
             return jsonify({'error': 'Sync engine not available'}), 503
 
-        chore_manager = ChoreManager(sync_engine.cache_manager)
+        task_manager = TaskManager(sync_engine.cache_manager)
 
-        if chore_manager.sync_chores():
-            logger.info("Chore sync completed successfully")
+        if task_manager.sync_tasks():
+            logger.info("task sync completed successfully")
             return jsonify({
                 'status': 'success',
-                'message': 'Chores synced from CSV',
+                'message': 'tasks synced from CSV',
                 'timestamp': datetime.now().isoformat()
             })
         else:
-            logger.warning("Chore sync failed")
+            logger.warning("task sync failed")
             return jsonify({
                 'status': 'error',
-                'message': 'Chore sync failed'
+                'message': 'task sync failed'
             }), 500
 
     except Exception as e:
-        logger.error(f"Error syncing chores: {e}", exc_info=True)
+        logger.error(f"Error syncing tasks: {e}", exc_info=True)
         return jsonify({'error': 'Internal server error'}), 500
 
 
-# Add after the sync_chores endpoint
+# Add after the sync_tasks endpoint
 
-@api_bp.route('/chores/load', methods=['POST'])
+@api_bp.route('/tasks/load', methods=['POST'])
 @rate_limit("10 per hour")
-def load_chores():
-    """Load/reload chores from CSV or create from JSON data
+def load_tasks():
+    """Load/reload tasks from CSV or create from JSON data
 
     Request Body (optional):
-        chores: Array of chore objects with {child_name, task, days}
+        tasks: Array of task objects with {name, task, days}
         If no body provided, loads from CSV file
 
     Returns:
-        JSON response with loaded chores
+        JSON response with loaded tasks
     """
     try:
-        logger.info(f"Chore load request from {request.remote_addr}")
+        logger.info(f"task load request from {request.remote_addr}")
 
         if not sync_engine:
             return jsonify({'error': 'Sync engine not available'}), 503
 
-        chore_manager = ChoreManager(sync_engine.cache_manager)
+        task_manager = TaskManager(sync_engine.cache_manager)
 
         # Check if JSON data provided
         data = request.get_json()
 
-        if data and 'chores' in data:
-            # Create chores from JSON data
-            from ..chore_chart.base import ChoreItem
+        if data and 'tasks' in data:
+            # Create tasks from JSON data
+            from ..task_chart.base import TaskItem
             import uuid
 
-            chores = []
-            current_week = chore_manager.get_current_week_start()
+            tasks = []
+            current_week = task_manager.get_current_week_start()
 
-            for chore_data in data['chores']:
+            for task_data in data['tasks']:
                 try:
-                    child_name = chore_data.get('child_name', '').strip()
-                    task = chore_data.get('task', '').strip()
-                    days_input = chore_data.get('days', '')
+                    name = task_data.get('name', '').strip()
+                    task = task_data.get('task', '').strip()
+                    days_input = task_data.get('days', '')
 
-                    if not all([child_name, task, days_input]):
+                    if not all([name, task, days_input]):
                         continue
 
                     # Handle days as string or array
@@ -827,158 +826,158 @@ def load_chores():
                         continue
 
                     # Create unique ID
-                    chore_id = f"{child_name}_{task}_{str(uuid.uuid4())[:8]}".replace(' ', '_').lower()
+                    task_id = f"{name}_{task}_{str(uuid.uuid4())[:8]}".replace(' ', '_').lower()
 
-                    chore = ChoreItem(
-                        id=chore_id,
-                        child_name=child_name,
+                    task = TaskItem(
+                        id=task_id,
+                        name=name,
                         task=task,
                         days=days,
                         week_start=current_week
                     )
 
-                    chores.append(chore)
+                    tasks.append(task)
 
                 except Exception as e:
-                    logger.warning(f"Error parsing chore data: {e}")
+                    logger.warning(f"Error parsing task data: {e}")
                     continue
 
-            if chores:
-                chore_manager.cache_manager.store_chores(chores)
-                logger.info(f"Created {len(chores)} chores from JSON data")
+            if tasks:
+                task_manager.cache_manager.store_tasks(tasks)
+                logger.info(f"Created {len(tasks)} tasks from JSON data")
 
         else:
             # Load from CSV
-            if chore_manager.sync_chores():
-                logger.info("Chores loaded from CSV")
+            if task_manager.sync_tasks():
+                logger.info("tasks loaded from CSV")
             else:
                 return jsonify({
                     'status': 'error',
-                    'message': 'Failed to load chores from CSV'
+                    'message': 'Failed to load tasks from CSV'
                 }), 500
 
-        # Get current chores to return
-        current_chores = chore_manager.cache_manager.get_chores(
-            week_start=chore_manager.get_current_week_start()
+        # Get current tasks to return
+        current_tasks = task_manager.cache_manager.get_tasks(
+            week_start=task_manager.get_current_week_start()
         )
 
-        chores_data = []
-        for chore in current_chores:
-            chores_data.append({
-                'id': chore.id,
-                'child_name': chore.child_name,
-                'task': chore.task,
-                'days': chore.days,
-                'completed': chore.completed,
-                'week_start': chore.week_start
+        tasks_data = []
+        for task in current_tasks:
+            tasks_data.append({
+                'id': task.id,
+                'name': task.name,
+                'task': task.task,
+                'days': task.days,
+                'completed': task.completed,
+                'week_start': task.week_start
             })
 
         return jsonify({
             'status': 'success',
-            'message': f'Loaded {len(chores_data)} chores',
-            'chores': chores_data,
+            'message': f'Loaded {len(tasks_data)} tasks',
+            'tasks': tasks_data,
             'timestamp': datetime.now().isoformat()
         })
 
     except Exception as e:
-        logger.error(f"Error loading chores: {e}", exc_info=True)
+        logger.error(f"Error loading tasks: {e}", exc_info=True)
         return jsonify({'error': 'Internal server error'}), 500
 
 
-@api_bp.route('/chores/debug', methods=['GET'])
+@api_bp.route('/tasks/debug', methods=['GET'])
 @rate_limit(f"{API_RATE_LIMIT_PER_HOUR} per hour")
-def debug_chores():
-    """Debug endpoint to check CSV file and chore loading"""
+def debug_tasks():
+    """Debug endpoint to check CSV file and task loading"""
     try:
         if not sync_engine:
             return jsonify({'error': 'Sync engine not available'}), 503
 
-        chore_manager = ChoreManager(sync_engine.cache_manager)
+        task_manager = TaskManager(sync_engine.cache_manager)
 
         debug_info = {
-            'csv_path': str(chore_manager.csv_path),
-            'csv_exists': chore_manager.csv_path.exists(),
-            'current_week': chore_manager.get_current_week_start()
+            'csv_path': str(task_manager.csv_path),
+            'csv_exists': task_manager.csv_path.exists(),
+            'current_week': task_manager.get_current_week_start()
         }
 
         # Try to read CSV
-        if chore_manager.csv_path.exists():
+        if task_manager.csv_path.exists():
             try:
-                with open(chore_manager.csv_path, 'r') as f:
+                with open(task_manager.csv_path, 'r') as f:
                     content = f.read()
                 debug_info['csv_content'] = content[:500]  # First 500 chars
                 debug_info['csv_lines'] = len(content.split('\n'))
             except Exception as e:
                 debug_info['csv_read_error'] = str(e)
 
-        # Try to load chores
+        # Try to load tasks
         try:
-            chores = chore_manager.load_chores_from_csv()
-            debug_info['parsed_chores'] = len(chores)
-            debug_info['sample_chores'] = [
+            tasks = task_manager.load_tasks_from_csv()
+            debug_info['parsed_tasks'] = len(tasks)
+            debug_info['sample_tasks'] = [
                 {
-                    'id': chore.id,
-                    'child_name': chore.child_name,
-                    'task': chore.task,
-                    'days': chore.days
-                } for chore in chores[:3]  # First 3 chores
+                    'id': task.id,
+                    'name': task.name,
+                    'task': task.task,
+                    'days': task.days
+                } for task in tasks[:3]  # First 3 tasks
             ]
         except Exception as e:
             debug_info['parse_error'] = str(e)
 
         # Check database
         try:
-            db_chores = chore_manager.cache_manager.get_chores(
-                week_start=chore_manager.get_current_week_start()
+            db_tasks = task_manager.cache_manager.get_tasks(
+                week_start=task_manager.get_current_week_start()
             )
-            debug_info['db_chores'] = len(db_chores)
+            debug_info['db_tasks'] = len(db_tasks)
         except Exception as e:
             debug_info['db_error'] = str(e)
 
         return jsonify(debug_info)
 
     except Exception as e:
-        logger.error(f"Error in chores debug: {e}", exc_info=True)
+        logger.error(f"Error in tasks debug: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 
-# Add this to server/api/routes.py after the existing get_chores function
+# Add this to server/api/routes.py after the existing get_tasks function
 
-@api_bp.route('/chores/summary')
+@api_bp.route('/tasks/summary')
 @rate_limit(f"{API_RATE_LIMIT_PER_HOUR} per hour")
-def get_chores_summary():
-    """Get chore summary statistics for dashboard display"""
+def get_tasks_summary():
+    """Get task summary statistics for dashboard display"""
     try:
         if not sync_engine:
             return jsonify({'error': 'Sync engine not available'}), 503
 
-        chore_manager = ChoreManager(sync_engine.cache_manager)
-        week_start = chore_manager.get_current_week_start()
+        task_manager = TaskManager(sync_engine.cache_manager)
+        week_start = task_manager.get_current_week_start()
 
-        # Get all chore days for current week
-        chore_days = chore_manager.cache_manager.get_chore_days(week_start=week_start)
+        # Get all task days for current week
+        task_days = task_manager.cache_manager.get_task_days(week_start=week_start)
 
         # Calculate statistics
-        total_tasks = len(chore_days)
-        completed_tasks = len([c for c in chore_days if c['completed']])
+        total_tasks = len(task_days)
+        completed_tasks = len([c for c in task_days if c['completed']])
         completion_rate = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
 
-        # Group by child
-        children_stats = {}
-        for chore_day in chore_days:
-            child = chore_day['child_name']
-            if child not in children_stats:
-                children_stats[child] = {'total': 0, 'completed': 0}
+        # Group by name
+        people_stats = {}
+        for task_day in task_days:
+            name = task_day['name']
+            if name not in people_stats:
+                people_stats[name] = {'total': 0, 'completed': 0}
 
-            children_stats[child]['total'] += 1
-            if chore_day['completed']:
-                children_stats[child]['completed'] += 1
+            people_stats[name]['total'] += 1
+            if task_day['completed']:
+                people_stats[name]['completed'] += 1
 
         # Add completion rates
-        for child_stats in children_stats.values():
-            child_stats['completion_rate'] = (
-                child_stats['completed'] / child_stats['total'] * 100
-                if child_stats['total'] > 0 else 0
+        for people_stats in people_stats.values():
+            people_stats['completion_rate'] = (
+                people_stats['completed'] / people_stats['total'] * 100
+                if people_stats['total'] > 0 else 0
             )
 
         return jsonify({
@@ -988,14 +987,14 @@ def get_chores_summary():
                 'completion_rate': round(completion_rate, 1),
                 'week_start': week_start
             },
-            'children': children_stats,
+            'people': people_stats,
             'metadata': {
                 'updated_at': datetime.now().isoformat()
             }
         })
 
     except Exception as e:
-        logger.error(f"Error getting chore summary: {e}", exc_info=True)
+        logger.error(f"Error getting task summary: {e}", exc_info=True)
         return jsonify({'error': 'Internal server error'}), 500
 
 # ===============================

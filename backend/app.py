@@ -12,19 +12,19 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_cors import CORS
 
-# Allow OAuth over HTTP for local development
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
-
-# Import configuration and logging FIRST
-from .config.settings import config
-from .config.logger import setup_logging, get_logger
-from .config.constants import (
+from backend.api import api_bp
+from backend.config import config
+from backend.config.logger import setup_logging, get_logger
+from backend.config.constants import (
     DEFAULT_SERVER_HOST,
     DEFAULT_SERVER_PORT,
     DEFAULT_SERVER_DEBUG,
     API_RATE_LIMIT_PER_HOUR,
     API_VERSION
 )
+
+# Allow OAuth over HTTP for local development
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 # Setup logging before anything else
 log_dir = Path(config.config_dir) / "logs"
@@ -41,8 +41,6 @@ logger.info("=" * 70)
 logger.info(f"Config directory: {config.config_dir}")
 logger.info(f"Config file: {config.config_file}")
 logger.info(f"Log directory: {log_dir}")
-
-from .api.routes import api_bp
 
 
 def create_app() -> Flask:
@@ -98,6 +96,8 @@ def create_app() -> Flask:
     logger.info("Flask application created successfully")
 
     app.config['JSONIFY_PRETTYPRINT_REGULAR'] = True
+
+    config.copy_chore_chart()
     return app
 
 

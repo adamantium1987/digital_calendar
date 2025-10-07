@@ -47,16 +47,16 @@ class MigrationManager:
 
     def _register_migrations(self):
         """Register all available migrations"""
-        # Migration 1: Initial schema
+        # Migration 1: Calendar schema
         self.migrations.append(Migration(
             version=1,
             description="Initial schema with events, calendars, sync_status",
             up=self._migration_1_up
         ))
-
+        # Migration 2: Taks schema
         self.migrations.append(Migration(
             version=2,
-            description="Add chore tables",
+            description="Add task tables",
             up=self._migration_2_up
         ))
         # Future migrations go here
@@ -223,41 +223,42 @@ class MigrationManager:
             conn.commit()
 
     def _migration_2_up(self):
-        """Add chore tables"""
+        """Add task tables"""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("PRAGMA foreign_keys = ON")
 
-            # Drop existing chores table if it exists
-            conn.execute("DROP TABLE IF EXISTS chores")
+            # Drop existing tasks table if it exists
+            conn.execute("DROP TABLE IF EXISTS tasks")
 
-            # Chores table - one row per chore per day
+            # Tasks table - one row per task per day
             conn.execute("""
-                CREATE TABLE chores (
+                CREATE TABLE tasks (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    chore_id INTEGER NOT NULL,
-                    child_name TEXT NOT NULL,
+                    task_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
                     task TEXT NOT NULL,
+                    type TEXT NOT NULL,
                     day_name TEXT NOT NULL,
                     week_start TEXT NOT NULL,
                     completed BOOLEAN NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
-                    UNIQUE(chore_id, day_name, week_start)
+                    UNIQUE(task_id, day_name, week_start)
                 )
             """)
 
-            # Indexes for chores
+            # Indexes for tasks
             conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_chores_child_week 
-                ON chores(child_name, week_start)
+                CREATE INDEX IF NOT EXISTS idx_tasks_child_week 
+                ON tasks(name, week_start)
             """)
             conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_chores_day_week 
-                ON chores(day_name, week_start)
+                CREATE INDEX IF NOT EXISTS idx_tasks_day_week 
+                ON tasks(day_name, week_start)
             """)
             conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_chores_chore_day_week 
-                ON chores(chore_id, day_name, week_start)
+                CREATE INDEX IF NOT EXISTS idx_tasks_task_day_week 
+                ON tasks(task_id, day_name, week_start)
             """)
 
             conn.commit()
