@@ -5,12 +5,16 @@ Provides REST API for Pi Zero clients and web interface for configuration
 """
 
 import os
+import sys
 from pathlib import Path
 
 from flask import Flask, jsonify, request, redirect, url_for, session, send_from_directory
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_cors import CORS
+
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
 
 from backend.api import api_bp
 from backend.config import config
