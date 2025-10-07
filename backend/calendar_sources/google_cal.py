@@ -13,7 +13,6 @@ from google.auth.transport.requests import Request
 from google.auth.exceptions import RefreshError, GoogleAuthError
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow, InstalledAppFlow
-# from google_auth_oauthlib.exceptions import OAuthError
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
@@ -206,7 +205,7 @@ class GoogleCalendarSource(BaseCalendarSource):
             print(f"{'=' * 70}\n")
             return True
 
-        except OAuthError as e:
+        except GoogleAuthError as e:
             logger.error(f"OAuth flow error for {self.account_id}: {e}", exc_info=True)
             return False
 

@@ -4,12 +4,11 @@ import { api } from '../utils/api';
 import { Header } from '../components/global/Header';
 import { Toast } from '../components/global/Toast';
 import {Accounts} from "../types/accounts";
+import { useNavigate } from 'react-router-dom';
 
-interface AccountSetupProps {
-  navigate: (path: string) => void;
-}
 
-export const AccountSetup: React.FC<AccountSetupProps> = ({ navigate }) => {
+export const AccountSetup: React.FC = () => {
+  const navigate = useNavigate();
   const [accounts, setAccounts] = useState<Accounts>({ google: [], apple: [] });
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);

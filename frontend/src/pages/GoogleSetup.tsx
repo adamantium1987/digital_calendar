@@ -2,12 +2,11 @@
 import React, { useState } from 'react';
 import { api } from '../utils/api';
 import { Header } from '../components/global/Header';
+import {useNavigate} from "react-router-dom";
 
-interface GoogleSetupProps {
-  navigate: (path: string) => void;
-}
 
-export const GoogleSetup: React.FC<GoogleSetupProps> = ({ navigate }) => {
+export const GoogleSetup: React.FC = () => {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     display_name: '',
     client_id: '',

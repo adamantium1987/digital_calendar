@@ -1,5 +1,5 @@
 // src/components/EmptyTasksMessage.tsx
-import React, { FC } from "react";
+import { FC } from "react";
 
 interface EmptyTasksMessageProps {
   dayName: string;

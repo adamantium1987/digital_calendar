@@ -7,12 +7,11 @@ import {Accounts} from "../types/accounts";
 import {SyncStatus} from "../types/syncStatus";
 import {CacheStats} from "../types/cacheStats";
 import {useSwipeNavigation} from "../hooks/useSwipeNavigation";
+import {useNavigate} from "react-router-dom";
 
-interface DashboardProps {
-  navigate: (path: string) => void;
-}
 
-export const Dashboard: React.FC<DashboardProps> = ({ navigate }) => {
+export const Dashboard: React.FC = () => {
+  const navigate = useNavigate();
   useSwipeNavigation({
     onSwipeLeft: () => navigate('/display'), // Swipe left goes to Calendar
     onSwipeRight: () => {}, // Already at first page, do nothing

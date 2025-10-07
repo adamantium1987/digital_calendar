@@ -1,0 +1,152 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "digital-calendar"
+version = "1.0.0"
+description = "Digital calendar synchronization system for Google and Apple calendars"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "Adam Furrer", email = "adam@example.com"}
+]
+keywords = ["calendar", "sync", "google-calendar", "icloud", "caldav"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+
+dependencies = [
+    "flask==2.3.3",
+    "flask-cors==4.0.0",
+    "Flask-Limiter==4.0.0",
+    "google-auth==2.23.3",
+    "google-auth-oauthlib==1.1.0",
+    "google-api-python-client==2.103.0",
+    "caldav==1.3.6",
+    "vobject==0.9.6.1",
+    "icalendar==6.3.1",
+    "apscheduler==3.10.4",
+    "cryptography==44.0.1",
+    "requests==2.32.4",
+    "python-dateutil==2.9.0.post0",
+    "pytz==2025.1",
+    "beautifulsoup4==4.12.3",
+    "lxml==6.0.1",
+    "pydantic==2.10.5",  # For validation
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.4.0",
+    "pytest-cov>=4.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "mypy>=1.0.0",
+    "flake8>=6.0.0",
+    "isort>=5.12.0",
+    "pre-commit>=3.0.0",
+    "jupyter==1.1.1",
+    "rich==14.0.0",
+]
+
+cache = [
+    "redis==5.0.1",
+    "pymongo==4.13.0",
+]
+
+async = [
+    "aiohttp==3.12.13",
+]
+
+[project.scripts]
+digital-calendar = "backend.app:start_server"
+
+[tool.black]
+line-length = 100
+target-version = ['py39', 'py310', 'py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+  | node_modules
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+strict_equality = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "google.*",
+    "googleapiclient.*",
+    "caldav.*",
+    "vobject.*",
+    "icalendar.*",
+    "apscheduler.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --cov=backend --cov-report=html --cov-report=term-missing"
+
+[tool.coverage.run]
+source = ["backend"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__pycache__/*",
+    "*/venv/*",
+    "*/.venv/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]

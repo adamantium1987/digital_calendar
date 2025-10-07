@@ -2,14 +2,16 @@
 import React, { useState } from 'react';
 import { api } from '../utils/api';
 import { Header } from '../components/global/Header';
+import {useNavigate, useSearchParams} from "react-router-dom";
 
-interface AppleSetupProps {
-  navigate: (path: string) => void;
-  accountId?: string | null;
-  step?: string | null;
-}
 
-export const AppleSetup: React.FC<AppleSetupProps> = ({ navigate, accountId, step }) => {
+export const AppleSetup: React.FC = () => {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  // Get values from URL query parameters
+  const accountId = searchParams.get('accountId');
+  const step = searchParams.get('step');
   const [formData, setFormData] = useState({
     display_name: '',
     username: '',

@@ -1,5 +1,5 @@
 // src/components/TaskCardsGrid.tsx
-import React, { FC } from "react";
+import { FC } from "react";
 import FamilyMemberCard from "./FamilyMemberCard";
 import {TaskDayRecord, DayName, MemberColors} from "../../types/tasks";
 

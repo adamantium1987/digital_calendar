@@ -9,12 +9,11 @@ import {api} from "../utils/api";
 import {CalendarEvent} from "../types/calendarEvent";
 import {ViewType} from "../types/viewType";
 import {useSwipeNavigation} from "../hooks/useSwipeNavigation";
+import { useNavigate } from "react-router-dom";
 
-interface CalendarProps {
-  navigate: (path: string) => void;
-}
 
-export const CalendarDisplay: React.FC<CalendarProps> = ({ navigate }) => {
+export const CalendarDisplay: React.FC = () => {
+  const navigate = useNavigate();
   useSwipeNavigation({
     onSwipeLeft: () => navigate('/tasks'), // Swipe left goes to Calendar
     onSwipeRight: () => {}, // Already at first page, do nothing

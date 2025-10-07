@@ -1,6 +1,6 @@
 // src/components/TaskChartDisplay.tsx
 import React, { useState, useEffect, useMemo } from "react";
-import { TaskDayRecord, DayName, MemberColors } from "../types/tasks";
+import { TaskDayRecord, DayName } from "../types/tasks";
 import {Toast} from "../components/global/Toast";
 import TaskDateNav from "../components/task/TaskDateNav";
 import EmptyTasksMessage from "../components/task/EmptyTaskMessage";
@@ -8,13 +8,10 @@ import TaskCardsGrid from "../components/task/TaskCardsGrid";
 import {useSwipeNavigation} from "../hooks/useSwipeNavigation";
 import { MEMBER_COLORS } from "../constants/memberColors";
 import { DAYS } from "../constants/days";
+import {useNavigate} from "react-router-dom";
 
-
-interface TaskChartDisplayProps {
-  navigate: (path: string) => void;
-}
-
-export const TaskChartDisplay: React.FC<TaskChartDisplayProps> = ({ navigate }) => {
+export const TaskChartDisplay: React.FC = () => {
+  const navigate = useNavigate();
   useSwipeNavigation({
     onSwipeLeft: () => navigate('/display'),
     onSwipeRight: () => navigate('/dashboard'),

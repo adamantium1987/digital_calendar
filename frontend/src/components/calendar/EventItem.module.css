@@ -1,0 +1,72 @@
+/* Event Item Component Styles */
+
+.eventCard {
+  padding: 0.75rem;
+  margin: 0.5rem 0;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-base);
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  overflow: hidden;
+}
+
+.eventCard::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: rgba(255, 255, 255, 0.3);
+  transition: width var(--transition-base);
+}
+
+.eventCard:hover {
+  transform: translateY(-2px) scale(1.01);
+  box-shadow: var(--shadow-md);
+}
+
+.eventCard:hover::before {
+  width: 8px;
+}
+
+.eventCard:active {
+  transform: translateY(0) scale(0.99);
+}
+
+.compactEvent {
+  padding: 0.5rem;
+  margin: 0.25rem 0;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  color: white;
+}
+
+.time {
+  font-size: 0.875rem;
+  opacity: 0.9;
+  color: white;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .eventCard {
+    padding: 0.5rem;
+    margin: 0.25rem 0;
+  }
+
+  .title {
+    font-size: 0.9rem;
+  }
+
+  .time {
+    font-size: 0.8rem;
+  }
+}

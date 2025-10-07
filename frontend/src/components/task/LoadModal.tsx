@@ -1,5 +1,5 @@
 // src/components/LoadModal.tsx
-import React, { FC } from "react";
+import { FC } from "react";
 
 export interface LoadModalProps {
   open: boolean;

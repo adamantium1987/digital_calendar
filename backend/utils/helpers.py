@@ -1,10 +1,15 @@
 # server/utils/helpers.py
 """
 General utility functions for the server
+
+This module provides common utility functions for datetime parsing,
+string manipulation, email validation, and data processing.
 """
 
+from __future__ import annotations
+
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import re
 
 
@@ -23,17 +28,17 @@ def format_datetime(dt: datetime, format_string: str = "%Y-%m-%d %H:%M:%S") -> s
 
 def parse_datetime(dt_string: str) -> Optional[datetime]:
     """Parse datetime from string
-    
+
     Args:
         dt_string: Datetime string (ISO format)
-        
+
     Returns:
         Datetime object or None if parsing fails
     """
     try:
         # Try ISO format first
         return datetime.fromisoformat(dt_string.replace('Z', '+00:00'))
-    except:
+    except (ValueError, AttributeError):
         # Try common formats
         formats = [
             "%Y-%m-%d %H:%M:%S",
@@ -41,13 +46,13 @@ def parse_datetime(dt_string: str) -> Optional[datetime]:
             "%m/%d/%Y %H:%M:%S",
             "%m/%d/%Y"
         ]
-        
+
         for fmt in formats:
             try:
                 return datetime.strptime(dt_string, fmt)
-            except:
+            except (ValueError, TypeError):
                 continue
-        
+
         return None
 
 
@@ -135,7 +140,7 @@ def merge_dicts(dict1: Dict, dict2: Dict) -> Dict:
     return result
 
 
-def get_date_range(view_type: str, reference_date: datetime = None) -> tuple:
+def get_date_range(view_type: str, reference_date: Optional[datetime] = None) -> Tuple[datetime, datetime]:
     """Get start and end dates for a view type
     
     Args:

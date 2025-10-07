@@ -1,0 +1,82 @@
+/* Card Component Styles */
+
+.card {
+  background: var(--bg-card, white);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-md);
+  transition: all var(--transition-base);
+  position: relative;
+  overflow: hidden;
+}
+
+.card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+
+/* Glassmorphism variant */
+.cardGlass {
+  composes: card;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-glass);
+}
+
+.cardHeader {
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary, #333);
+}
+
+.cardBody {
+  color: var(--text-secondary, #666);
+}
+
+.cardFooter {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color, #e0e0e0);
+}
+
+/* Card variants */
+.cardElevated {
+  composes: card;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.cardFlat {
+  composes: card;
+  box-shadow: none;
+  border: 1px solid var(--border-color, #e0e0e0);
+}
+
+.cardInteractive {
+  composes: card;
+  cursor: pointer;
+}
+
+.cardInteractive:active {
+  transform: scale(0.98);
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .card {
+    padding: 1rem;
+    border-radius: 8px;
+  }
+
+  .cardTitle {
+    font-size: 1.125rem;
+  }
+}

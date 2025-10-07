@@ -10,7 +10,7 @@ interface DayViewProps {
   formatTime: (dateStr: string) => string;
 }
 
-export const DayView: React.FC<DayViewProps> = ({ date, events, goToDate, formatTime }) => {
+export const DayView: React.FC<DayViewProps> = ({ date, events, goToDate }) => {
   const dayName = date.toLocaleDateString("en-US", { weekday: "long" });
   const monthYear = date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
   const dayNum = date.getDate();
@@ -24,7 +24,7 @@ export const DayView: React.FC<DayViewProps> = ({ date, events, goToDate, format
           <p>{monthYear}</p>
         </div>
       </div>
-      <EventList events={events} onItemClick={(e) => goToDate?.(date.getFullYear(), date.getMonth(), date.getDate())} />
+      <EventList events={events} onItemClick={(_e) => goToDate?.(date.getFullYear(), date.getMonth(), date.getDate())} />
     </div>
   );
 };
