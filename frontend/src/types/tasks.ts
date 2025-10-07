@@ -1,6 +1,7 @@
 // src/types/tasks.ts
 
-export const DAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'] as const;
+import {DAYS} from "../constants/days";
+
 export type DayName = (typeof DAYS)[number];
 
 export type TaskType = 'chore' | 'hygiene';

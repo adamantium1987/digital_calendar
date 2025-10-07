@@ -6,7 +6,7 @@ import {TaskDayRecord, DayName, MemberColors} from "../../types/tasks";
 
 interface TaskCardsGridProps {
   groupedTasks: Record<string, TaskDayRecord[]>;
-  onToggle: (task_id: number, day: DayName, checked: boolean) => void; // <--- use DayName
+  onToggle: (task_id: number, day: DayName, checked: boolean) => void;
   memberColors: Record<string, MemberColors>;
 }
 
